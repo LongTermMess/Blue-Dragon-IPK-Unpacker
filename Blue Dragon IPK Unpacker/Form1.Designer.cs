@@ -28,9 +28,12 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             button1 = new Button();
             button2 = new Button();
             listBox1 = new ListBox();
+            ToolTip1 = new ToolTip(components);
             SuspendLayout();
             // 
             // button1
@@ -50,6 +53,7 @@
             button2.Size = new Size(107, 23);
             button2.TabIndex = 2;
             button2.Text = "Pack File";
+            ToolTip1.SetToolTip(button2, "Shift click to pack as .mpk. (Functionally identical but this extension is used with models)");
             button2.UseVisualStyleBackColor = true;
             button2.Click += button2_Click;
             // 
@@ -61,19 +65,20 @@
             listBox1.ItemHeight = 15;
             listBox1.Location = new Point(12, 38);
             listBox1.Name = "listBox1";
-            listBox1.Size = new Size(583, 229);
+            listBox1.Size = new Size(576, 304);
             listBox1.TabIndex = 3;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(607, 281);
+            ClientSize = new Size(600, 366);
             Controls.Add(listBox1);
             Controls.Add(button2);
             Controls.Add(button1);
+            Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
-            Text = "IPK Unpacker";
+            Text = "Blue Dragon IPK Unpacker";
             ResumeLayout(false);
         }
 
@@ -82,5 +87,6 @@
         private Button button1;
         private Button button2;
         private ListBox listBox1;
+        private ToolTip ToolTip1;
     }
 }

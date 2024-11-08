@@ -127,6 +127,12 @@ namespace Blue_Dragon_IPK_Unpacker
 
         private void button2_Click(object sender, EventArgs e)
         {
+            string FileExtension = ".ipk";
+            if (Control.ModifierKeys == Keys.Shift)
+            {
+                FileExtension = ".mpk";
+            }
+
 
             FolderBrowserDialog folderDialog = new FolderBrowserDialog();
 
@@ -140,14 +146,14 @@ namespace Blue_Dragon_IPK_Unpacker
             listBox1.Items.Clear();
 
             string selectedFilePath = folderDialog.SelectedPath;
-            PackIPK(selectedFilePath);
+            PackIPK(selectedFilePath, FileExtension);
 
         }
 
 
-        public void PackIPK(string pathName)
+        public void PackIPK(string pathName, string FileExtension)
         {
-            string NewFilePath = pathName + ".ipk";
+            string NewFilePath = pathName + FileExtension;
             listBox1.Items.Add("Packing file: " + NewFilePath);
 
             List<string> FilesToWrite = new List<string>();
@@ -175,8 +181,6 @@ namespace Blue_Dragon_IPK_Unpacker
                 file.Write(0x800); //Still unknown, something to do with compression
                 file.Write(FilesToWrite.Count()); //File Count
                 file.Write(0); //Total file size REMEMBER TO UPDATE AT END
-
-                listBox1.Items.Add("Writing Files");
 
                 for (int i = 0; i < FilesToWrite.Count; i++)
                 {
