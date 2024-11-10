@@ -34,7 +34,7 @@
             button2 = new Button();
             listBox1 = new ListBox();
             ToolTip1 = new ToolTip(components);
-            button3 = new Button();
+            checkBox1 = new CheckBox();
             SuspendLayout();
             // 
             // button1
@@ -69,22 +69,24 @@
             listBox1.Size = new Size(576, 304);
             listBox1.TabIndex = 3;
             // 
-            // button3
+            // checkBox1
             // 
-            button3.Location = new Point(234, 9);
-            button3.Name = "button3";
-            button3.Size = new Size(107, 23);
-            button3.TabIndex = 4;
-            button3.Text = "button3";
-            button3.UseVisualStyleBackColor = true;
-            button3.Click += button3_Click;
+            checkBox1.AutoSize = true;
+            checkBox1.Checked = true;
+            checkBox1.CheckState = CheckState.Checked;
+            checkBox1.Location = new Point(234, 12);
+            checkBox1.Name = "checkBox1";
+            checkBox1.Size = new Size(148, 19);
+            checkBox1.TabIndex = 4;
+            checkBox1.Text = "Auto Convert DDS Files";
+            checkBox1.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(600, 366);
-            Controls.Add(button3);
+            Controls.Add(checkBox1);
             Controls.Add(listBox1);
             Controls.Add(button2);
             Controls.Add(button1);
@@ -92,6 +94,7 @@
             Name = "Form1";
             Text = "Blue Dragon IPK Unpacker";
             ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
@@ -100,6 +103,6 @@
         private Button button2;
         private ListBox listBox1;
         private ToolTip ToolTip1;
-        private Button button3;
+        private CheckBox checkBox1;
     }
 }

@@ -7,19 +7,20 @@ using System.Text;
 using DirectXTex;
 using System;
 using DrSwizzler;
+using static DirectXTex.DirectXTexUtility;
+using AuroraLib.Core.IO;
 
 namespace Blue_Dragon_IPK_Unpacker
 {
     public partial class Form1 : Form
     {
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        static extern bool AllocConsole();
+        //DEBUG
+        //string DDSdatalog = "";
 
+     
         public Form1()
         {
             InitializeComponent();
-            //AllocConsole();
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -49,6 +50,11 @@ namespace Blue_Dragon_IPK_Unpacker
 
         public void UnpackIPK(string FileName)
         {
+            //DEBUG
+            //DDSdatalog = "";
+
+            List<string> DDSScaling = new List<string>();
+
             byte[] fileBytes = File.ReadAllBytes(FileName);
 
             using (BinaryReader file = new BinaryReader(
@@ -105,11 +111,38 @@ namespace Blue_Dragon_IPK_Unpacker
 
                     listBox1.Items.Add("Writing file: " + OutFileName);
 
+                    if (Path.GetExtension(OutFileName) == ".dds" && checkBox1.Checked)
+                    {
+                        listBox1.Items.Add("Convering to real DDS");
+
+                        using (BinaryReader DDSfile = new BinaryReader(
+                        File.Open(OutFileName, FileMode.Open)))
+                        {
+                            DDSfile.BaseStream.Seek(0x2A, SeekOrigin.Begin);
+                            int ScalingVal1 = DDSfile.ReadByte();
+                            int ScalingVal2 = DDSfile.ReadByte();
+
+                            //DDSfile.BaseStream.Seek(0x30, SeekOrigin.Begin);
+                            //int ScalingVal3 = DDSfile.ReadInt32();
+                            //int ScalingVal4 = DDSfile.ReadInt32();
+
+
+                            DDSScaling.Add(Path.GetFileName(OutFileName) + "|" + ScalingVal1 + "|" + ScalingVal2);
+                        }
+
+                        byte[] convertedDDS = ConvertBDtoDDS(OutFileName);
+                        File.WriteAllBytes(OutFileName, convertedDDS);
+                    }
+
                     file.BaseStream.Seek(HoldPosition, SeekOrigin.Begin);
 
                 }
 
+                File.WriteAllLines(Path.GetDirectoryName(FileName) + "/" + Path.GetFileNameWithoutExtension(FileName) + "/TextureScaling.txt", DDSScaling);
             }
+
+            //File.WriteAllText("./dataDebug.txt", DDSdatalog);
+
         }
 
 
@@ -164,6 +197,7 @@ namespace Blue_Dragon_IPK_Unpacker
 
             foreach (string file in Directory.EnumerateFiles(pathName, "*.*", SearchOption.AllDirectories))
             {
+                if (file.Contains("TextureScaling.txt")) { continue; }
                 string ShortenedFilePath = file.Replace(pathName + "\\", "");
                 Console.WriteLine(ShortenedFilePath);
                 FilesToWrite.Add(file);
@@ -203,7 +237,36 @@ namespace Blue_Dragon_IPK_Unpacker
                 {
                     listBox1.Items.Add("Writing data for: " + FilePathsToWrite[i]);
 
-                    byte[] BytesToWrite = File.ReadAllBytes(FilesToWrite[i]);
+                    byte[] BytesToWrite;
+                    if (Path.GetExtension(FilePathsToWrite[i]) == ".dds" && checkBox1.Checked)
+                    {
+                        int ScaleVal = 0xE0;
+                        int ScaleVal2 = 0xFF;
+                        if (File.Exists(pathName + "/TextureScaling.txt"))
+                        {
+                            List<string> scalingVals = File.ReadAllLines(pathName + "/TextureScaling.txt").ToList();
+
+                            string FileName = Path.GetFileName(FilePathsToWrite[i]);
+                            for(int j = 0; j < scalingVals.Count; j++) 
+                            {
+                                if (scalingVals[j].Contains("|") && scalingVals[j].Split("|")[0] == FileName)
+                                {
+                                    ScaleVal = Int32.Parse(scalingVals[j].Split("|")[1]);
+                                    ScaleVal2 = Int32.Parse(scalingVals[j].Split("|")[2]);
+                                    listBox1.Items.Add("FOUND SCALING VALUE FOR: " + FileName);
+                                    break;
+                                }
+                                
+                            }
+                        }
+
+                        BytesToWrite = ConvertDDStoBD(FilesToWrite[i], ScaleVal, ScaleVal2);
+                    }
+                    else
+                    {
+                        BytesToWrite = File.ReadAllBytes(FilesToWrite[i]);
+                    }
+
                     int FileSize = BytesToWrite.Length;
                     int FileOffset = (int)file.BaseStream.Position;
                     BytesToWrite = PadArray(BytesToWrite, 128);
@@ -246,39 +309,85 @@ namespace Blue_Dragon_IPK_Unpacker
 
         }
 
-        private void button3_Click(object sender, EventArgs e)
+
+        public byte[] ConvertBDtoDDS(string DDSFile)
         {
-
-
-            OpenFileDialog openFileDialog1 = new OpenFileDialog();
-
-            openFileDialog1.InitialDirectory = "/";
-            openFileDialog1.Filter = "Blue Dragon DDS Files (*.dds)|*.dds";
-            openFileDialog1.FilterIndex = 0;
-            openFileDialog1.RestoreDirectory = true;
-
-            if (openFileDialog1.ShowDialog() != DialogResult.OK)
-            {
-                return;
-            }
-
-            string selectedFileName = openFileDialog1.FileName;
-            listBox1.Items.Clear();
-            listBox1.Items.Add("Converting DDS: " + selectedFileName);
-
-            ConvertDDS(selectedFileName);
-
-            //listBox1.Items.Add("Successfully unpacked file");
-        }
-
-        public void ConvertDDS(string DDSFile)
-        {
-            byte[] DDSdata = File.ReadAllBytes(DDSFile);
-            listBox1.Items.Add(DDSdata.Length - 0x80);
+            List<byte> NewDDS = new List<byte>();
+            byte[] oldDDS = File.ReadAllBytes(DDSFile);
 
             using (BinaryReader file = new BinaryReader(
             File.Open(DDSFile, FileMode.Open)))
             {
+                file.BaseStream.Seek(0x2A, SeekOrigin.Begin);
+                int UnknownScalingVal = file.ReadByte();
+
+
+                int Magic = file.ReadInt32();
+                if (Magic == 0x20534444) { listBox1.Items.Add("Standard DDS file detected, Skipping conversion."); return oldDDS; }
+
+
+                file.BaseStream.Seek(0x21, SeekOrigin.Begin);
+                int WidthMod = file.ReadByte();
+
+                file.BaseStream.Seek(0x20, SeekOrigin.Begin);
+                int Width = (file.ReadByte() - 0x80);
+                if (WidthMod == 0xc0) { listBox1.Items.Add("WIDTH MOD EXAMPLE: " + DDSFile); Width = Width * 160; }
+                else { Width = Width * 128; }
+
+                file.BaseStream.Seek(0x29, SeekOrigin.Begin);
+                int Height = (file.ReadByte() + 1) * 8;
+
+                file.BaseStream.Seek(0x24, SeekOrigin.Begin);
+                int Format = ToBigE(file.ReadInt32());
+                DXGIFormat PixelFormat;
+                switch (Format)
+                {
+                    default:
+                        PixelFormat = DXGIFormat.BC1UNORM; //I dunno :3
+                        break;
+                    case 0x52:
+                        PixelFormat = DXGIFormat.BC1UNORM;
+                        break;
+                    case 0x53:
+                        PixelFormat = DXGIFormat.BC2UNORM;
+                        break;
+                    case 0x54:
+                        PixelFormat = DXGIFormat.BC3UNORM;
+                        break;
+                    case 0x86:
+                        PixelFormat = DXGIFormat.R8G8B8A8UNORM;
+                        break;
+                }
+
+                //DEBUG
+                //DDSdatalog = DDSdatalog + Path.GetFileName(DDSFile) + "|0x" + UnknownScalingVal.ToString("X2") + "|" + Width + "|" + Height + "\n";
+
+                TexMetadata MetaData = GenerateMataData(Width, Height, 1, PixelFormat, false);
+                MetaData.MiscFlags2 = TexMiscFlags2.TEXMISC2ALPHAMODEMASK;
+
+                GenerateDDSHeader(MetaData, DDSFlags.NONE, out var header, out var dx10Header, false);
+                NewDDS.AddRange(EncodeDDSHeader(header, dx10Header));
+
+                NewDDS.AddRange(GetDeSwizzled(oldDDS, Width, Height, (DrSwizzler.DDS.DXEnums.DXGIFormat)PixelFormat));
+
+
+            }
+
+            return NewDDS.ToArray();
+            //File.WriteAllBytes(DDSFile + ".new.dds", NewDDS.ToArray());
+        }
+
+        public byte[] ConvertDDStoBD(string DDSFile, int ScalingVal1, int ScalingVal2)
+        {
+            byte[] DDSdata = File.ReadAllBytes(DDSFile);
+            listBox1.Items.Add("Converting DDS file: " + DDSFile);
+
+            using (BinaryReader file = new BinaryReader(
+            File.Open(DDSFile, FileMode.Open)))
+            {
+                int Magic = file.ReadInt32();
+                if (Magic != 0x20534444) { listBox1.Items.Add("Not a standard DDS file, Skipping conversion."); return DDSdata; }
+
                 file.BaseStream.Seek(0xC, SeekOrigin.Begin);
                 int Height = file.ReadInt32();
                 int Width = file.ReadInt32();
@@ -290,7 +399,7 @@ namespace Blue_Dragon_IPK_Unpacker
                 DrSwizzler.DDS.DXEnums.DXGIFormat PixelFormat;
 
 
-                switch(Format)
+                switch (Format)
                 {
                     default:
                         PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.R8G8B8A8UNORM;
@@ -305,7 +414,7 @@ namespace Blue_Dragon_IPK_Unpacker
                         PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC3UNORM;
                         break;
                 }
-  
+
                 //0x31545844 dxt1
                 //0x33545844 dxt3
                 //0x35545844 dxt5
@@ -320,7 +429,7 @@ namespace Blue_Dragon_IPK_Unpacker
 
                 ListAddInt(Header, 3);
                 ListAddInt(Header, 1);
-                for(int i = 0; i < 12; i++)
+                for (int i = 0; i < 12; i++)
                 {
                     Header.Add(0);
                 }
@@ -333,7 +442,7 @@ namespace Blue_Dragon_IPK_Unpacker
                 Header.Add(0);
                 Header.Add(2);
 
-                switch(PixelFormat)
+                switch (PixelFormat)
                 {
                     default:
                         ListAddInt(Header, 0x86);
@@ -353,8 +462,12 @@ namespace Blue_Dragon_IPK_Unpacker
 
                 Header.Add((byte)((Height / 8) - 1));
 
-                Header.Add(0xE0);
-                Header.Add(0xFF);
+                //Unknown scaling value, 
+                //Header.Add(0xE0);
+                //Header.Add(0xFF);
+                Header.Add((byte)ScalingVal1);
+                Header.Add((byte)ScalingVal2);
+
                 ListAddInt(Header, 3344);
                 ListAddInt(Header, 0);
                 ListAddInt(Header, 512);
@@ -366,18 +479,20 @@ namespace Blue_Dragon_IPK_Unpacker
 
 
                 //Write Swizzed shizz here
-                
+
                 List<byte> SwizzledData = GetSwizzled(DDSdata, Width, Height, PixelFormat).ToList();
                 Header.AddRange(SwizzledData);
                 DDSdata = Header.ToArray();
             }
 
-            File.WriteAllBytes(DDSFile, DDSdata);
+            return DDSdata;
+            //File.WriteAllBytes(DDSFile, DDSdata);
         }
 
 
         public byte[] GetSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
         {
+            //Remove DDS header
             List<byte> DDSList = DDSFile.ToList();
             DDSList.RemoveRange(0, 0x80);
             DDSFile = DDSList.ToArray();
@@ -385,6 +500,10 @@ namespace Blue_Dragon_IPK_Unpacker
         }
         public byte[] GetDeSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
         {
+            //Remove Blue Dragon header
+            List<byte> DDSList = DDSFile.ToList();
+            DDSList.RemoveRange(0, 0x800);
+            DDSFile = DDSList.ToArray();
             return DrSwizzler.Deswizzler.Xbox360Deswizzle(DDSFile, Width, Height, Format);
         }
 
@@ -400,11 +519,13 @@ namespace Blue_Dragon_IPK_Unpacker
         public void ListAddInt(List<byte> list, int Value)
         {
             byte[] ByteArr = BitConverter.GetBytes(ToBigE(Value));
-            for(int i = 0; i < ByteArr.Length; i++) 
+            for (int i = 0; i < ByteArr.Length; i++)
             {
                 list.Add(ByteArr[i]);
             }
         }
+
+
     }
-    
+
 }
