@@ -4,6 +4,9 @@ using System.Collections;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using DirectXTex;
+using System;
+using DrSwizzler;
 
 namespace Blue_Dragon_IPK_Unpacker
 {
@@ -243,6 +246,165 @@ namespace Blue_Dragon_IPK_Unpacker
 
         }
 
+        private void button3_Click(object sender, EventArgs e)
+        {
 
+
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
+
+            openFileDialog1.InitialDirectory = "/";
+            openFileDialog1.Filter = "Blue Dragon DDS Files (*.dds)|*.dds";
+            openFileDialog1.FilterIndex = 0;
+            openFileDialog1.RestoreDirectory = true;
+
+            if (openFileDialog1.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            string selectedFileName = openFileDialog1.FileName;
+            listBox1.Items.Clear();
+            listBox1.Items.Add("Converting DDS: " + selectedFileName);
+
+            ConvertDDS(selectedFileName);
+
+            //listBox1.Items.Add("Successfully unpacked file");
+        }
+
+        public void ConvertDDS(string DDSFile)
+        {
+            byte[] DDSdata = File.ReadAllBytes(DDSFile);
+            listBox1.Items.Add(DDSdata.Length - 0x80);
+
+            using (BinaryReader file = new BinaryReader(
+            File.Open(DDSFile, FileMode.Open)))
+            {
+                file.BaseStream.Seek(0xC, SeekOrigin.Begin);
+                int Height = file.ReadInt32();
+                int Width = file.ReadInt32();
+                listBox1.Items.Add("Width: " + Width);
+                listBox1.Items.Add("Height: " + Height);
+
+                file.BaseStream.Seek(0x54, SeekOrigin.Begin);
+                int Format = file.ReadInt32();
+                DrSwizzler.DDS.DXEnums.DXGIFormat PixelFormat;
+
+
+                switch(Format)
+                {
+                    default:
+                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.R8G8B8A8UNORM;
+                        break;
+                    case 0x31545844:
+                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC1UNORM;
+                        break;
+                    case 0x33545844:
+                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC2UNORM;
+                        break;
+                    case 0x35545844:
+                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC3UNORM;
+                        break;
+                }
+  
+                //0x31545844 dxt1
+                //0x33545844 dxt3
+                //0x35545844 dxt5
+                //0x0 R8G8B8A8UNORM
+
+
+
+                //Write header here
+                List<byte> Header = new List<byte>();
+
+                ListAddInt(Header, DDSdata.Length - 0x80); //Data minus Original DDS header
+
+                ListAddInt(Header, 3);
+                ListAddInt(Header, 1);
+                for(int i = 0; i < 12; i++)
+                {
+                    Header.Add(0);
+                }
+                ListAddInt(Header, -65536);
+                ListAddInt(Header, -65536);
+
+                Header.Add((byte)((Width / 128) + 0x80));
+                Header.Add(0);
+
+                Header.Add(0);
+                Header.Add(2);
+
+                switch(PixelFormat)
+                {
+                    default:
+                        ListAddInt(Header, 0x86);
+                        break;
+                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC1UNORM:
+                        ListAddInt(Header, 0x52);
+                        break;
+                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC2UNORM:
+                        ListAddInt(Header, 0x53);
+                        break;
+                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC3UNORM:
+                        ListAddInt(Header, 0x54);
+                        break;
+                }
+
+                Header.Add(0);
+
+                Header.Add((byte)((Height / 8) - 1));
+
+                Header.Add(0xE0);
+                Header.Add(0xFF);
+                ListAddInt(Header, 3344);
+                ListAddInt(Header, 0);
+                ListAddInt(Header, 512);
+
+                for (int i = 0; i < 0x7c8; i++)
+                {
+                    Header.Add(0);
+                }
+
+
+                //Write Swizzed shizz here
+                
+                List<byte> SwizzledData = GetSwizzled(DDSdata, Width, Height, PixelFormat).ToList();
+                Header.AddRange(SwizzledData);
+                DDSdata = Header.ToArray();
+            }
+
+            File.WriteAllBytes(DDSFile, DDSdata);
+        }
+
+
+        public byte[] GetSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
+        {
+            List<byte> DDSList = DDSFile.ToList();
+            DDSList.RemoveRange(0, 0x80);
+            DDSFile = DDSList.ToArray();
+            return DrSwizzler.Swizzler.Xbox360Swizzle(DDSFile, Width, Height, Format);
+        }
+        public byte[] GetDeSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
+        {
+            return DrSwizzler.Deswizzler.Xbox360Deswizzle(DDSFile, Width, Height, Format);
+        }
+
+
+        public int ToBigE(int Input)
+        {
+            byte[] bytes = BitConverter.GetBytes(Input);
+            Array.Reverse(bytes, 0, bytes.Length);
+            return BitConverter.ToInt32(bytes, 0);
+        }
+
+        //Auto converts everything to big endian
+        public void ListAddInt(List<byte> list, int Value)
+        {
+            byte[] ByteArr = BitConverter.GetBytes(ToBigE(Value));
+            for(int i = 0; i < ByteArr.Length; i++) 
+            {
+                list.Add(ByteArr[i]);
+            }
+        }
     }
+    
 }
