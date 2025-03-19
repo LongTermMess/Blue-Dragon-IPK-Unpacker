@@ -10,6 +10,13 @@ namespace Blue_Dragon_IPK_Unpacker
 {
     public static class Utils
     {
+        public static void DebugLog(string Message)
+        {
+            Console.WriteLine(Message);
+        }
+
+
+
         public static int ToBigE(int Input)
         {
             byte[] bytes = BitConverter.GetBytes(Input);

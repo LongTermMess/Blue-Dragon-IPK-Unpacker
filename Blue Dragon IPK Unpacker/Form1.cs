@@ -23,6 +23,12 @@ namespace Blue_Dragon_IPK_Unpacker
 {
     public partial class Form1 : Form
     {
+        [DllImport("kernel32", SetLastError = true)]
+        private static extern bool AttachConsole(int dwProcessId);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern int AllocConsole();
+
+
         //DEBUG
         //string DDSdatalog = "";
 
@@ -30,6 +36,7 @@ namespace Blue_Dragon_IPK_Unpacker
         public Form1()
         {
             InitializeComponent();
+            AllocConsole();
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -89,7 +96,7 @@ namespace Blue_Dragon_IPK_Unpacker
             listBox1.Items.Clear();
 
             string selectedFilePath = folderDialog.SelectedPath;
-            PackIPK(selectedFilePath, FileExtension);
+            //PackIPK(selectedFilePath, FileExtension);
 
         }
 

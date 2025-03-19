@@ -15,6 +15,7 @@ namespace Blue_Dragon_IPK_Unpacker
 {
     public static class IPK
     {
+        /*
         public static void UnpackIPK(string FileName, string OutPathOverride = "", bool ConvertDDS = true)
         {
             //DEBUG
@@ -240,7 +241,7 @@ namespace Blue_Dragon_IPK_Unpacker
 
         }
 
-
+        */
 
     }
 
@@ -298,11 +299,16 @@ namespace Blue_Dragon_IPK_Unpacker
                     if(PackedFile.CompressionType == 1)
                     {
                         PackedFile.DataUncompressed = Utils.DecompressArray(data);
+                        if(PackedFile.DataUncompressed.Length != PackedFile.RawFileSize) { Utils.DebugLog("[Warning] Decompressed file not same size as IPK says it should be"); }
                     }
-                    else
+                    else if(PackedFile.CompressionType == 0)
                     {
                         //If not then the data will be identical
                         PackedFile.DataUncompressed = data;
+                    }
+                    else
+                    {
+                        Utils.DebugLog("[Error] Unrecognised compression type of " + PackedFile.CompressionType + " in file \"" + PackedFile.FileName + "\"");
                     }
                 }
             }
@@ -310,7 +316,7 @@ namespace Blue_Dragon_IPK_Unpacker
             return true;
         }
 
-        public void WriteFiles(string folderPath)
+        public void WriteFiles(string folderPath, bool ConvertDDS = true)
         {
             foreach(IPK_File file in Files)
             {
@@ -319,9 +325,13 @@ namespace Blue_Dragon_IPK_Unpacker
 
                 byte[] DataToWrite = file.DataUncompressed;
 
-                if (FinalPath.EndsWith(".dds"))
+                if (FinalPath.EndsWith(".dds") && ConvertDDS)
                 {
-                    //CODE TO CONVER BD DDS INTO REAL DDS
+                    BD_DDS newDDS = new BD_DDS(DataToWrite);
+
+                    newDDS.ConvertBDtoDDS();
+
+                    DataToWrite = newDDS.data;
                 }
 
                 File.WriteAllBytes(FinalPath, DataToWrite);
