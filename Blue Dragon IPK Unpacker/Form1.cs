@@ -9,6 +9,15 @@ using System;
 using DrSwizzler;
 using static DirectXTex.DirectXTexUtility;
 using AuroraLib.Core.IO;
+using System.Windows.Forms.Design;
+using System.Runtime.CompilerServices;
+using static Blue_Dragon_IPK_Unpacker.IPK;
+using static Blue_Dragon_IPK_Unpacker.Utils;
+using System.Windows.Forms.VisualStyles;
+using System.Reflection;
+using System.Windows.Forms;
+using ICSharpCode.SharpZipLib.Zip.Compression;
+
 
 namespace Blue_Dragon_IPK_Unpacker
 {
@@ -17,7 +26,7 @@ namespace Blue_Dragon_IPK_Unpacker
         //DEBUG
         //string DDSdatalog = "";
 
-     
+
         public Form1()
         {
             InitializeComponent();
@@ -32,134 +41,32 @@ namespace Blue_Dragon_IPK_Unpacker
             openFileDialog1.Filter = "Blue Dragon IPK1 Files (*.ipk,*.mpk)|*.ipk;*.mpk";
             openFileDialog1.FilterIndex = 0;
             openFileDialog1.RestoreDirectory = true;
+            openFileDialog1.Multiselect = true;
 
             if (openFileDialog1.ShowDialog() != DialogResult.OK)
             {
                 return;
             }
-            listBox1.Items.Clear();
 
-            string selectedFileName = openFileDialog1.FileName;
-            listBox1.Items.Add("Unpacking file: " + selectedFileName);
-
-            UnpackIPK(selectedFileName);
-
-            listBox1.Items.Add("Successfully unpacked file");
-        }
-
-
-        public void UnpackIPK(string FileName)
-        {
-            //DEBUG
-            //DDSdatalog = "";
-
-            List<string> DDSScaling = new List<string>();
-
-            byte[] fileBytes = File.ReadAllBytes(FileName);
-
-            using (BinaryReader file = new BinaryReader(
-            File.Open(FileName, FileMode.Open)))
+            foreach (string selectedFileName in openFileDialog1.FileNames)
             {
-                int Header = file.ReadInt32();
-                if (Header != 0x314B5049) //Fail if header not "IPK1"
-                {
-                    return;
-                }
+                //listBox1.Items.Clear();
+                //listBox1.Items.Add("Unpacking file: " + selectedFileName);
 
-                int CompressionType = file.ReadInt32(); //Still further researched needed but if 0x800 use zlib method
-                int FileCount = file.ReadInt32(); //Total Number of files
-                int PackSize = file.ReadInt32(); //Total size of IPK file including header and file info
-                listBox1.Items.Add("Found " + FileCount + " files to unpack");
+                //UnpackIPK(selectedFileName);
 
-                for (int i = 0; i < FileCount; i++)
-                {
-                    string PackedFileName = System.Text.Encoding.UTF8.GetString(file.ReadBytes(64)).Split("\0")[0];
+                IPK_Pack tempPack = new IPK_Pack();
+                tempPack.ReadIPKFile(selectedFileName);
+                tempPack.WriteFiles(Path.GetDirectoryName(selectedFileName));   
 
-                    int Zip = file.ReadInt32(); //Unknown (Seemingly always 1)
-                    int SizeCompressed = file.ReadInt32(); //Length of data to pull out of file
-                    int FileOffset = file.ReadInt32(); //Location of compressed file in pack
-                    int SizeDecompressed = file.ReadInt32(); //Use for error checking
-
-                    file.ReadBytes(16); //Covering for current unknown
-
-
-                    long HoldPosition = file.BaseStream.Position;
-
-                    file.BaseStream.Seek(FileOffset, SeekOrigin.Begin);
-
-
-                    Console.WriteLine("Decompressing index: " + i + "|" + (Zip + "|" + PackedFileName));
-
-                    byte[] PackedFileBytes; Stream OutBytes;
-                    if (Zip == 1)
-                    {
-                        PackedFileBytes = file.ReadBytes(SizeCompressed);
-                        OutBytes = Decompress(PackedFileBytes);
-                    }
-                    else
-                    {
-                        PackedFileBytes = file.ReadBytes(SizeDecompressed);
-                        OutBytes = new MemoryStream(PackedFileBytes);
-                    }
-
-                    string OutFileName = Path.GetDirectoryName(FileName) + "/" + Path.GetFileNameWithoutExtension(FileName) + "/" + PackedFileName;
-                    Directory.CreateDirectory(Path.GetDirectoryName(OutFileName));
-                    using (var fileStream = File.Create(OutFileName))
-                    {
-                        OutBytes.CopyTo(fileStream);
-                    }
-
-                    listBox1.Items.Add("Writing file: " + OutFileName);
-
-                    if (Path.GetExtension(OutFileName) == ".dds" && checkBox1.Checked)
-                    {
-                        listBox1.Items.Add("Convering to real DDS");
-
-                        using (BinaryReader DDSfile = new BinaryReader(
-                        File.Open(OutFileName, FileMode.Open)))
-                        {
-                            DDSfile.BaseStream.Seek(0x2A, SeekOrigin.Begin);
-                            int ScalingVal1 = DDSfile.ReadByte();
-                            int ScalingVal2 = DDSfile.ReadByte();
-
-                            //DDSfile.BaseStream.Seek(0x30, SeekOrigin.Begin);
-                            //int ScalingVal3 = DDSfile.ReadInt32();
-                            //int ScalingVal4 = DDSfile.ReadInt32();
-
-
-                            DDSScaling.Add(Path.GetFileName(OutFileName) + "|" + ScalingVal1 + "|" + ScalingVal2);
-                        }
-
-                        byte[] convertedDDS = ConvertBDtoDDS(OutFileName);
-                        File.WriteAllBytes(OutFileName, convertedDDS);
-                    }
-
-                    file.BaseStream.Seek(HoldPosition, SeekOrigin.Begin);
-
-                }
-
-                File.WriteAllLines(Path.GetDirectoryName(FileName) + "/" + Path.GetFileNameWithoutExtension(FileName) + "/TextureScaling.txt", DDSScaling);
+                //listBox1.Items.Add("Successfully unpacked file");
             }
 
-            //File.WriteAllText("./dataDebug.txt", DDSdatalog);
+            //string selectedFileName = openFileDialog1.FileName;
 
         }
 
 
-
-        public static Stream Decompress(byte[] data)
-        {
-
-            var outputStream = new MemoryStream();
-            using (var compressedStream = new MemoryStream(data))
-            using (var inputStream = new InflaterInputStream(compressedStream))
-            {
-                inputStream.CopyTo(outputStream);
-                outputStream.Position = 0;
-                return outputStream;
-            }
-
-        }
 
         private void button2_Click(object sender, EventArgs e)
         {
@@ -187,345 +94,2332 @@ namespace Blue_Dragon_IPK_Unpacker
         }
 
 
-        public void PackIPK(string pathName, string FileExtension)
+
+
+
+        private void button3_Click(object sender, EventArgs e)
         {
-            string NewFilePath = pathName + FileExtension;
-            listBox1.Items.Add("Packing file: " + NewFilePath);
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
 
-            List<string> FilesToWrite = new List<string>();
-            List<string> FilePathsToWrite = new List<string>();
+            openFileDialog1.InitialDirectory = "/";
+            openFileDialog1.Filter = "Blue Dragon IPK1 Files (*.ipk,*.mpk)|*.hdb";
+            openFileDialog1.FilterIndex = 0;
+            openFileDialog1.RestoreDirectory = true;
 
-            foreach (string file in Directory.EnumerateFiles(pathName, "*.*", SearchOption.AllDirectories))
+            if (openFileDialog1.ShowDialog() != DialogResult.OK)
             {
-                if (file.Contains("TextureScaling.txt")) { continue; }
-                string ShortenedFilePath = file.Replace(pathName + "\\", "");
-                Console.WriteLine(ShortenedFilePath);
-                FilesToWrite.Add(file);
-                FilePathsToWrite.Add(ShortenedFilePath);
+                return;
             }
 
-            listBox1.Items.Add("Found " + FilesToWrite.Count() + " files to pack");
-
-            if (!Directory.Exists(Path.GetDirectoryName(NewFilePath))) { Directory.CreateDirectory(Path.GetDirectoryName(NewFilePath)); }
-            File.Create(NewFilePath).Close();
-
-            using (var fileStream = new FileStream(NewFilePath, FileMode.Append, FileAccess.Write, FileShare.None))
-            using (var file = new BinaryWriter(fileStream))
-            {
-                listBox1.Items.Add("Writing Header");
-                //Header
-                file.Write(0x314B5049); //"IPK1"
-                file.Write(0x800); //Still unknown, something to do with compression
-                file.Write(FilesToWrite.Count()); //File Count
-                file.Write(0); //Total file size REMEMBER TO UPDATE AT END
-
-                for (int i = 0; i < FilesToWrite.Count; i++)
-                {
-                    listBox1.Items.Add("Writing info for: " + FilePathsToWrite[i]);
-
-                    file.Write(Encoding.UTF8.GetBytes(FilePathsToWrite[i].PadRight(64, '\0')));
-                    file.Write(0); //No compression, hoping game will allow all file types to be left like this
-                    file.Write(0); //File Size, REMEMBER TO UPDATE AFTER WRITING RESPECTIVE FILE IN
-                    file.Write(0); //File Offset, REMEMBER TO UPDATE AFTER WRITING RESPECTIVE FILE IN
-                    file.Write(0); //File Size 2, REMEMBER TO UPDATE AFTER WRITING RESPECTIVE FILE IN
-
-                    file.Write(0x357070D3); //As yet unknown value but always this I think
-                    file.Write(new byte[12]); //Null 12 Bytes
-                }
-
-                for (int i = 0; i < FilesToWrite.Count; i++)
-                {
-                    listBox1.Items.Add("Writing data for: " + FilePathsToWrite[i]);
-
-                    byte[] BytesToWrite;
-                    if (Path.GetExtension(FilePathsToWrite[i]) == ".dds" && checkBox1.Checked)
-                    {
-                        int ScaleVal = 0xE0;
-                        int ScaleVal2 = 0xFF;
-                        if (File.Exists(pathName + "/TextureScaling.txt"))
-                        {
-                            List<string> scalingVals = File.ReadAllLines(pathName + "/TextureScaling.txt").ToList();
-
-                            string FileName = Path.GetFileName(FilePathsToWrite[i]);
-                            for(int j = 0; j < scalingVals.Count; j++) 
-                            {
-                                if (scalingVals[j].Contains("|") && scalingVals[j].Split("|")[0] == FileName)
-                                {
-                                    ScaleVal = Int32.Parse(scalingVals[j].Split("|")[1]);
-                                    ScaleVal2 = Int32.Parse(scalingVals[j].Split("|")[2]);
-                                    listBox1.Items.Add("FOUND SCALING VALUE FOR: " + FileName);
-                                    break;
-                                }
-                                
-                            }
-                        }
-
-                        BytesToWrite = ConvertDDStoBD(FilesToWrite[i], ScaleVal, ScaleVal2);
-                    }
-                    else
-                    {
-                        BytesToWrite = File.ReadAllBytes(FilesToWrite[i]);
-                    }
-
-                    int FileSize = BytesToWrite.Length;
-                    int FileOffset = (int)file.BaseStream.Position;
-                    BytesToWrite = PadArray(BytesToWrite, 128);
-
-                    file.Write(BytesToWrite);
-
-                    long HoldPosition = file.BaseStream.Position;
-
-                    //Write file info
-                    int FileInfoPos = 16 + (i * 96) + 64 + 4;
-
-                    file.Seek(FileInfoPos, SeekOrigin.Begin);
-                    file.Write(FileSize);
-                    file.Write(FileOffset);
-                    file.Write(FileSize);
-
-                    file.BaseStream.Seek(HoldPosition, SeekOrigin.Begin);
-                }
-
-                listBox1.Items.Add("Writing Total file size");
-                int TotalFileSize = (int)file.BaseStream.Position;
-                file.Seek(12, SeekOrigin.Begin);
-                file.Write(TotalFileSize);
-
-                listBox1.Items.Add("File sucessfully written");
-            }
-
-
-            byte[] PadArray(byte[] Data, int Size)
-            {
-                int Padding = Size - (Data.Length % Size);
-                if (Padding == Size) { Padding = 0; }
-                int ArraySize = Data.Length + Padding;
-
-                byte[] newArray = new byte[ArraySize];
-                Data.CopyTo(newArray, 0);
-
-                return newArray;
-            }
-
-        }
-
-
-        public byte[] ConvertBDtoDDS(string DDSFile)
-        {
-            List<byte> NewDDS = new List<byte>();
-            byte[] oldDDS = File.ReadAllBytes(DDSFile);
-
+            listBox1.Items.Clear();
+            string selectedFileName = openFileDialog1.FileName;
             using (BinaryReader file = new BinaryReader(
-            File.Open(DDSFile, FileMode.Open)))
+            File.Open(selectedFileName, FileMode.Open)))
             {
-                file.BaseStream.Seek(0x2A, SeekOrigin.Begin);
-                int UnknownScalingVal = file.ReadByte();
+                int VertType = 0;
+                int Script = 1;
 
-
-                int Magic = file.ReadInt32();
-                if (Magic == 0x20534444) { listBox1.Items.Add("Standard DDS file detected, Skipping conversion."); return oldDDS; }
-
-
-                file.BaseStream.Seek(0x21, SeekOrigin.Begin);
-                int WidthMod = file.ReadByte();
-
-                file.BaseStream.Seek(0x20, SeekOrigin.Begin);
-                int Width = (file.ReadByte() - 0x80);
-                if (WidthMod == 0xc0) { listBox1.Items.Add("WIDTH MOD EXAMPLE: " + DDSFile); Width = Width * 160; }
-                else { Width = Width * 128; }
-
-                file.BaseStream.Seek(0x29, SeekOrigin.Begin);
-                int Height = (file.ReadByte() + 1) * 8;
-
-                file.BaseStream.Seek(0x24, SeekOrigin.Begin);
-                int Format = ToBigE(file.ReadInt32());
-                DXGIFormat PixelFormat;
-                switch (Format)
+                int DBG_Faces_Offset = 0x2ef0;
+                //int DBG_Faces_Offset = 0x1f0;
+                int DBG_Faces_Size = 8448;
+                //int DBG_Faces_Size = 2760;
+                string DBG_Faces = "";
+                int FaceNum = DBG_Faces_Size / 6;
+                file.BaseStream.Seek(DBG_Faces_Offset, 0);
+                for (int i = 0; i < FaceNum; i++)
                 {
-                    default:
-                        PixelFormat = DXGIFormat.BC1UNORM; //I dunno :3
-                        break;
-                    case 0x52:
-                        PixelFormat = DXGIFormat.BC1UNORM;
-                        break;
-                    case 0x53:
-                        PixelFormat = DXGIFormat.BC2UNORM;
-                        break;
-                    case 0x54:
-                        PixelFormat = DXGIFormat.BC3UNORM;
-                        break;
-                    case 0x86:
-                        PixelFormat = DXGIFormat.R8G8B8A8UNORM;
-                        break;
+                    short One = ToBigE_Short(file.ReadInt16());
+                    short Two = ToBigE_Short(file.ReadInt16());
+                    short Three = ToBigE_Short(file.ReadInt16());
+                    //short Four = ToBigE_Short(file.ReadInt16());
+
+                    if (One == -1 || Two == -1 || Three == -1) { continue; }
+                    if (One == Two || Two == Three || Three == One) { continue; }
+                    if (One > FaceNum || Two > FaceNum || Three > FaceNum) { continue; }
+
+                    string NewLine = "(" + One + "," + Two + "," + Three + "),\n";
+                    DBG_Faces += NewLine;
                 }
 
-                //DEBUG
-                //DDSdatalog = DDSdatalog + Path.GetFileName(DDSFile) + "|0x" + UnknownScalingVal.ToString("X2") + "|" + Width + "|" + Height + "\n";
 
-                TexMetadata MetaData = GenerateMataData(Width, Height, 1, PixelFormat, false);
-                MetaData.MiscFlags2 = TexMiscFlags2.TEXMISC2ALPHAMODEMASK;
 
-                GenerateDDSHeader(MetaData, DDSFlags.NONE, out var header, out var dx10Header, false);
-                NewDDS.AddRange(EncodeDDSHeader(header, dx10Header));
+                //int VertOffset = 0xe49c;
+                //int VertOffset = Int32.Parse(textBox1.Text);
+                int VertOffset = 0;
 
-                NewDDS.AddRange(GetDeSwizzled(oldDDS, Width, Height, (DrSwizzler.DDS.DXEnums.DXGIFormat)PixelFormat));
+                file.BaseStream.Seek(0, 0);
+                while (true)
+                {
+                    int ReadInt = file.ReadInt32();
+                    if (ReadInt == 10546963) { VertType = 100; VertOffset = (int)(file.BaseStream.Position - 8); break; }
+                    else if (ReadInt == 5254928) { VertType = 48; VertOffset = (int)(file.BaseStream.Position - 8); break; }
+                }
+
+                //int TriSectionSize = 48;
+                //int TriOffset = 0;
+                string DBG = "";
+                //textBox1.Text = "52948 [CED4h]";
+
+                string ScriptTex = "import bpy\n";
+                ScriptTex += "mesh = bpy.data.meshes.new(\"myBeautifulMesh\")  # add the new mesh\n";
+                ScriptTex += "obj = bpy.data.objects.new(mesh.name, mesh)\n";
+                ScriptTex += "col = bpy.data.collections[\"Collection 1\"]\n";
+                ScriptTex += "col.objects.link(obj)\n";
+                ScriptTex += "bpy.context.view_layer.objects.active = obj\n";
+
+                ScriptTex += "verts = [\n";
+                Start:
+                //listBox1.Items.Add("" + VertOffset);
+
+                file.BaseStream.Seek(VertOffset, 0);
+                int VertSectionSize = ToBigE(file.ReadInt32());
+                int Unc1 = ToBigE(file.ReadInt32());
+                int VertCount = ToBigE(file.ReadInt32());
+                int Unc2 = ToBigE(file.ReadInt32());
+                listBox1.Items.Add("Mesh " + Script + " Found. SegSize: " + VertSectionSize + " Unknown: 0x" + Unc1.ToString("X4") + " Vert Count: " + VertCount + " PH: " + Unc2);
+
+                //if (VertSectionSize / VertCount == 100) { VertType = 100; }
+                //else { VertType = 48; }
+                //VertType = 100;
+
+                DBG = DBG + file.ReadSingle() + "\n";
+                int NumVerts = VertSectionSize / VertType;
+
+                for (int i = 0; i < NumVerts; i++)
+                {
+                    file.BaseStream.Seek(VertOffset + 16 + (i * VertType), SeekOrigin.Begin);
+                    float X = ToBigE_Float(file.ReadSingle());
+                    float Y = ToBigE_Float(file.ReadSingle());
+                    float Z = ToBigE_Float(file.ReadSingle());// + (2 * Script);
+
+                    string NewLine = "(" + X + "," + Y + "," + Z + "),\n";
+                    if (NewLine.Contains("NaN")) { listBox1.Items.Add("NaN on " + Script + "|" + (file.BaseStream.Position - 12) + "\"" + NewLine + "\""); }
+                    ScriptTex += NewLine;
+                }
+
+
+
+                if (file.BaseStream.Position + 164 <= file.BaseStream.Length)
+                {
+                    VertOffset = VertOffset + VertSectionSize + 16;
+                    Script++;
+                    goto Start;
+                }
+                else
+                {
+                    ScriptTex += "]  # 4 verts made with XYZ coords\n";
+                    ScriptTex += "edges = []\n";
+                    ScriptTex += "faces = [\n";
+                    //ScriptTex += DBG_Faces;
+                    ScriptTex += "]\n";
+                    /*
+                    ScriptTex += "faces = [\n";
+
+                    for (int i = 0; i < file.BaseStream.Length / TriSectionSize; i++)
+                    {
+                        file.BaseStream.Seek(TriOffset + (i * TriSectionSize), SeekOrigin.Begin);
+                        float Vert1 = ToBigE_Float(file.ReadSingle());
+                        float Vert2 = ToBigE_Float(file.ReadSingle());
+                        float Vert3 = ToBigE_Float(file.ReadSingle());
+                        ScriptTex += "[" + Vert1 + "," + Vert2 + "," + Vert3 + "],\n";
+                    }
+
+                    ScriptTex += "]\n";
+                    */
+                    ScriptTex += "mesh.from_pydata(verts, edges, faces)";
+                    //ScriptTex = ScriptTex.Replace("NaN", "0");
+                    File.WriteAllText("G:\\Emulator Games\\" + Path.GetFileName(selectedFileName) + ".txt", ScriptTex);
+                    //File.WriteAllText("G:\\Emulator Games\\BlueDragonScript_float.txt", DBG);
+
+
+                }
+
+
+            }
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            List<string> BaseMDLs = Directory.GetFiles("./BaseMDLs/").ToList();
+            List<string> MDLPaths = File.ReadAllLines("./MDLPaths.txt").ToList();
+            Random RNG = new Random();
+            bool DuplicateModels = false;
+
+            MDLPaths.RemoveAll(item => item.Contains("TOREMOVE"));
+
+            BaseMDLs.RemoveAll(item => item.Contains("gimmick"));
+            BaseMDLs.RemoveAll(item => item.Contains("item"));
+            BaseMDLs.RemoveAll(item => item.Contains("mct"));
+            BaseMDLs.RemoveAll(item => item.Contains("npc"));
+            BaseMDLs.RemoveAll(item => item.Contains("ply"));
+            BaseMDLs.RemoveAll(item => item.Contains("sdw"));
+
+            foreach (string MDL in MDLPaths)
+            {
+                int ChosenID = RNG.Next(BaseMDLs.Count());
+                Directory.CreateDirectory(Path.GetDirectoryName("./OutMDLs/" + MDL));
+                File.Copy(BaseMDLs[ChosenID], "./OutMDLs/" + MDL, true);
+                if (!DuplicateModels)
+                {
+                    BaseMDLs.RemoveAt(ChosenID);
+                }
+            }
+
+        }
+
+        private void button5_Click(object sender, EventArgs e)
+        {
+            List<string> Files = Directory.GetFiles("G:\\Emulator Games\\360\\Blue Dragon Un\\Modding Stuff\\Disc 1\\pack\\database\\model\\", "*.mdl", SearchOption.AllDirectories).ToList();
+
+            for (int i = 0; i < Files.Count(); i++)
+            {
+                Files[i] = Files[i].Replace("G:\\Emulator Games\\360\\Blue Dragon Un\\Modding Stuff\\Disc 1\\pack\\database\\", "");
+                if (!Files[i].Contains("ene"))
+                {
+                    Files[i] = "TOREMOVE";
+                }
+            }
+            File.WriteAllLines("./MDLPaths.txt", Files);
+        }
+
+        private void button6_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog openFileDialog1 = new OpenFileDialog();
+
+            openFileDialog1.InitialDirectory = "/";
+            openFileDialog1.Filter = "Blue Dragon IPK1 Files (*.ipk,*.mpk)|*.hdb";
+            openFileDialog1.FilterIndex = 0;
+            openFileDialog1.RestoreDirectory = true;
+
+            if (openFileDialog1.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            listBox1.Items.Clear();
+            string selectedFileName = openFileDialog1.FileName;
+
+
+            /* Debug testing for compressing files
+            byte[] FileBytes = File.ReadAllBytes(selectedFileName);
+            File.WriteAllBytes(selectedFileName + ".newCompressed_D", Compress(FileBytes, Deflater.DEFLATED).ToArray());
+            File.WriteAllBytes(selectedFileName + ".newCompressed_S", Compress(FileBytes, Deflater.BEST_SPEED).ToArray());
+            File.WriteAllBytes(selectedFileName + ".newCompressed_C", Compress(FileBytes, Deflater.BEST_COMPRESSION).ToArray());
+            File.WriteAllBytes(selectedFileName + ".newCompressed_DC", Compress(FileBytes, Deflater.DEFAULT_COMPRESSION).ToArray());
+            return;
+            */
+
+            using (BinaryWriter file = new BinaryWriter(
+            File.Open(selectedFileName, FileMode.Open)))
+            {
+                int Offset = 7848;
+
+
+                for(int i = 0; i < FuckedVerts.Count(); i++)
+                {
+                    file.BaseStream.Seek(Offset + (i * 48),0);
+                    string[] floats = FuckedVerts[i].Split(',');
+
+                    float F1 = ToBigE_Float(float.Parse(floats[0]));
+                    float F2 = ToBigE_Float(float.Parse(floats[1]));
+                    float F3 = ToBigE_Float(float.Parse(floats[2]));
+                    file.Write(F1);
+                    file.Write(F2);
+                    file.Write(F3);
+
+
+                }
+
+
+
 
 
             }
 
-            return NewDDS.ToArray();
-            //File.WriteAllBytes(DDSFile + ".new.dds", NewDDS.ToArray());
-        }
-
-        public byte[] ConvertDDStoBD(string DDSFile, int ScalingVal1, int ScalingVal2)
-        {
-            byte[] DDSdata = File.ReadAllBytes(DDSFile);
-            listBox1.Items.Add("Converting DDS file: " + DDSFile);
-
-            using (BinaryReader file = new BinaryReader(
-            File.Open(DDSFile, FileMode.Open)))
-            {
-                int Magic = file.ReadInt32();
-                if (Magic != 0x20534444) { listBox1.Items.Add("Not a standard DDS file, Skipping conversion."); return DDSdata; }
-
-                file.BaseStream.Seek(0xC, SeekOrigin.Begin);
-                int Height = file.ReadInt32();
-                int Width = file.ReadInt32();
-                listBox1.Items.Add("Width: " + Width);
-                listBox1.Items.Add("Height: " + Height);
-
-                file.BaseStream.Seek(0x54, SeekOrigin.Begin);
-                int Format = file.ReadInt32();
-                DrSwizzler.DDS.DXEnums.DXGIFormat PixelFormat;
-
-
-                switch (Format)
-                {
-                    default:
-                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.R8G8B8A8UNORM;
-                        break;
-                    case 0x31545844:
-                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC1UNORM;
-                        break;
-                    case 0x33545844:
-                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC2UNORM;
-                        break;
-                    case 0x35545844:
-                        PixelFormat = DrSwizzler.DDS.DXEnums.DXGIFormat.BC3UNORM;
-                        break;
-                }
-
-                //0x31545844 dxt1
-                //0x33545844 dxt3
-                //0x35545844 dxt5
-                //0x0 R8G8B8A8UNORM
 
 
 
-                //Write header here
-                List<byte> Header = new List<byte>();
-
-                ListAddInt(Header, DDSdata.Length - 0x80); //Data minus Original DDS header
-
-                ListAddInt(Header, 3);
-                ListAddInt(Header, 1);
-                for (int i = 0; i < 12; i++)
-                {
-                    Header.Add(0);
-                }
-                ListAddInt(Header, -65536);
-                ListAddInt(Header, -65536);
-
-                Header.Add((byte)((Width / 128) + 0x80));
-                Header.Add(0);
-
-                Header.Add(0);
-                Header.Add(2);
-
-                switch (PixelFormat)
-                {
-                    default:
-                        ListAddInt(Header, 0x86);
-                        break;
-                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC1UNORM:
-                        ListAddInt(Header, 0x52);
-                        break;
-                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC2UNORM:
-                        ListAddInt(Header, 0x53);
-                        break;
-                    case DrSwizzler.DDS.DXEnums.DXGIFormat.BC3UNORM:
-                        ListAddInt(Header, 0x54);
-                        break;
-                }
-
-                Header.Add(0);
-
-                Header.Add((byte)((Height / 8) - 1));
-
-                //Unknown scaling value, 
-                //Header.Add(0xE0);
-                //Header.Add(0xFF);
-                Header.Add((byte)ScalingVal1);
-                Header.Add((byte)ScalingVal2);
-
-                ListAddInt(Header, 3344);
-                ListAddInt(Header, 0);
-                ListAddInt(Header, 512);
-
-                for (int i = 0; i < 0x7c8; i++)
-                {
-                    Header.Add(0);
-                }
 
 
-                //Write Swizzed shizz here
-
-                List<byte> SwizzledData = GetSwizzled(DDSdata, Width, Height, PixelFormat).ToList();
-                Header.AddRange(SwizzledData);
-                DDSdata = Header.ToArray();
             }
+        string[] FuckedVerts = {
+"-3.096414,0.000000,-2.431148",
+"-4.450231,0.000000,-2.711171",
+"-4.634250,0.000000,-2.669218",
+"-4.634250,0.000000,-2.669218",
+"-4.450231,0.000000,-2.711171",
+"-3.096414,0.000000,-2.431148",
+"-1.249825,0.000000,-11.627669",
+"-1.223656,0.000000,-11.698790",
+"-1.219816,-0.011001,-11.697840",
+"-1.219816,0.011001,-11.697840",
+"-1.223656,0.000000,-11.698790",
+"-1.249825,0.000000,-11.627669",
+"0.073086,0.000000,-3.749008",
+"0.073008,-0.031142,-3.749348",
+"0.090485,0.000000,-3.861212",
+"0.090485,-0.031142,-3.865273",
+"0.090485,0.000000,-3.861212",
+"0.073008,0.031142,-3.749348",
+"0.090485,0.031142,-3.865273",
+"3.184764,0.000000,-2.922327",
+"3.039588,0.000000,-2.754360",
+"3.184764,-0.031142,-2.917396",
+"3.042699,-0.031142,-2.757765",
+"-1.145163,0.000000,-4.008642",
+"-0.759459,-0.009930,-3.841037",
+"-1.145163,0.000000,-3.866092",
+"-0.970402,-0.004414,-3.725756",
+"-0.880391,-0.015020,-1.322179",
+"-1.190560,-0.007297,-1.350346",
+"-0.895067,-0.012907,-1.552992",
+"-1.440187,-0.000093,-1.486567",
+"-0.291960,-0.029639,-1.257043",
+"-0.295230,-0.079605,-1.256206",
+"-0.281157,-0.027994,-1.322179",
+"-0.284738,-0.079979,-1.322179",
+"-0.269574,-0.025895,-1.513762",
+"-0.273821,-0.080525,-1.518504",
+"-0.324170,-0.159958,-1.322179",
+"-0.312762,-0.161172,-1.540475",
+"-0.361221,-0.178783,-1.322179",
+"-0.350737,-0.179893,-1.551152",
+"-0.500603,-0.167987,-1.322179",
+"-0.496209,-0.168448,-1.570964",
+"-0.672889,-0.154642,-1.322179",
+"-0.677386,-0.154155,-1.585096",
+"-0.812271,-0.143846,-1.322179",
+"-0.823243,-0.142670,-1.564757",
+"-0.854789,-0.118481,-1.570285",
+"-0.841838,-0.119861,-1.322179",
+"-0.880391,-0.015020,-1.322179",
+"-0.333334,-0.159248,-1.259608",
+"-0.368575,-0.178213,-1.264553",
+"-0.502786,-0.167818,-1.277389",
+"-0.671629,-0.154740,-1.296328",
+"-0.810312,-0.143998,-1.306828",
+"-0.840164,-0.119991,-1.310748",
+"0.126106,-0.031682,-1.463593",
+"0.017890,-0.032335,-1.382069",
+"-0.281157,-0.027994,-1.322179",
+"-0.128553,-0.033869,-1.245411",
+"-1.443427,-0.000000,-1.488335",
+"-1.189404,-0.000000,-1.349434",
+"-1.440187,0.000093,-1.486567",
+"-1.190560,0.007297,-1.350346",
+"-0.342788,0.037377,-0.950579",
+"-0.279072,0.037179,-0.950582",
+"-0.335869,0.036324,-0.992296",
+"-0.266562,0.036804,-0.983977",
+"-0.931160,0.024367,-1.039072",
+"-0.884097,0.029165,-0.950600",
+"-0.828336,0.029218,-1.032547",
+"-0.813605,0.033235,-0.950584",
+"3.184764,0.000000,-2.922327",
+"3.184764,0.031142,-2.917396",
+"3.039588,0.000000,-2.754360",
+"3.042699,0.031142,-2.757765",
+"-1.145163,0.000000,-4.008642",
+"-1.145163,0.000000,-3.866092",
+"-0.759459,0.009930,-3.841037",
+"-0.970402,0.004414,-3.725756",
+"-0.880391,0.015020,-1.322179",
+"-0.895067,0.012907,-1.552992",
+"-1.190560,0.007297,-1.350346",
+"-1.440187,0.000093,-1.486567",
+"0.070932,0.000000,-6.006474",
+"0.051360,0.000000,-6.655296",
+"0.070932,0.031142,-6.018322",
+"0.051360,0.031142,-6.661287",
+"-0.181685,-0.168896,-2.912204",
+"-0.459693,-0.168896,-3.221925",
+"-0.316284,-0.181164,-3.115884",
+"-1.501727,-0.000000,-3.220610",
+"-1.145163,0.000000,-3.458533",
+"-0.978323,-0.004273,-3.332362",
+"-0.970402,-0.004414,-3.725756",
+"-0.770024,-0.009751,-3.444036",
+"-0.942695,-0.009638,-3.173961",
+"-0.921620,-0.055462,-3.139235",
+"-0.737143,-0.117128,-3.444036",
+"-1.973623,-0.117128,-3.089832",
+"-0.712746,-0.141465,-3.444036",
+"-1.815586,-0.141465,-3.067065",
+"-0.599339,-0.153733,-3.355505",
+"-1.083456,-0.153733,-2.965087",
+"-0.831232,-0.157968,-2.912204",
+"-0.184364,-0.168896,-2.820676",
+"0.547494,-0.181164,-2.912204",
+"0.533190,-0.181164,-2.730598",
+"0.738977,-0.162691,-2.912204",
+"0.718883,-0.162691,-2.693217",
+"0.934487,-0.081345,-2.912204",
+"0.904746,-0.081345,-2.629034",
+"0.963086,-0.022192,-2.912204",
+"0.928829,-0.022291,-2.592386",
+"3.042699,-0.031142,-2.757765",
+"0.965279,-0.022191,-2.988009",
+"0.937735,-0.081345,-3.026564",
+"0.743296,-0.162691,-3.086283",
+"-0.759459,-0.009930,-3.841037",
+"-0.743843,-0.090301,-3.509829",
+"-0.735974,-0.117128,-3.494798",
+"-0.712299,-0.141465,-3.465849",
+"-0.691683,-0.143746,-3.444036",
+"0.215602,-0.031142,-1.531015",
+"0.126106,-0.031682,-1.463593",
+"0.215602,-0.031142,-1.689724",
+"-0.269574,-0.025895,-1.513762",
+"-0.251461,-0.022613,-1.813332",
+"0.194869,-0.031142,-1.778552",
+"0.202775,-0.031142,-1.813023",
+"0.215602,-0.031142,-1.868954",
+"-0.244490,-0.022501,-2.054975",
+"0.230636,-0.031142,-2.053689",
+"0.228557,-0.031142,-2.233399",
+"0.901241,-0.022370,-2.334817",
+"2.868173,-0.031142,-2.337097",
+"2.472293,-0.029088,-2.396334",
+"2.848321,-0.031142,-2.431148",
+"2.921345,-0.031142,-2.464729",
+"0.873845,-0.081345,-2.334817",
+"-0.250583,-0.081345,-2.055318",
+"-0.257427,-0.081345,-1.813332",
+"-0.273821,-0.080525,-1.518504",
+"-0.312762,-0.161172,-1.540475",
+"-0.298503,-0.162691,-1.813332",
+"-0.350737,-0.179893,-1.551152",
+"-0.338732,-0.181164,-1.813332",
+"-0.491929,-0.168896,-1.813332",
+"-0.496209,-0.168448,-1.570964",
+"-0.677386,-0.154155,-1.585096",
+"-0.681290,-0.153733,-1.813332",
+"-0.825124,-0.142469,-1.606334",
+"-0.823243,-0.142670,-1.564757",
+"-0.854789,-0.118481,-1.570285",
+"-0.857430,-0.118199,-1.620878",
+"-0.895067,-0.012907,-1.552992",
+"-0.900455,-0.012132,-1.637731",
+"-0.867476,-0.117128,-1.813332",
+"-0.911620,-0.010524,-1.813332",
+"-0.919420,-0.010434,-2.084459",
+"-1.258776,-0.004451,-2.086504",
+"-0.921292,-0.010413,-2.149561",
+"-0.874010,-0.117128,-2.076952",
+"-0.876476,-0.117128,-2.176485",
+"-0.840148,-0.141465,-2.071699",
+"-0.842663,-0.141465,-2.186455",
+"-0.684842,-0.153733,-2.227008",
+"-0.683435,-0.153733,-2.063146",
+"-0.488264,-0.168896,-2.278129",
+"-0.489993,-0.168896,-2.058782",
+"0.500023,-0.181164,-2.313333",
+"-0.333563,-0.181164,-2.057035",
+"-0.834487,-0.141465,-1.813332",
+"0.900842,-0.081345,-2.591871",
+"0.709122,-0.162691,-2.586856",
+"0.684994,-0.162691,-2.325545",
+"0.521069,-0.181164,-2.576719",
+"-0.192528,-0.168896,-2.541849",
+"-1.069873,-0.153733,-2.500565",
+"-1.775621,-0.141465,-2.462949",
+"-1.926985,-0.117128,-2.453463",
+"-2.128953,-0.010212,-2.432677",
+"-1.501727,-0.000000,-2.242284",
+"-1.501727,-0.000000,-2.326572",
+"-0.292480,-0.162691,-2.057087",
+"-1.488293,-0.000000,-2.172463",
+"-1.505682,-0.000000,-2.122219",
+"-1.510711,-0.000000,-2.039430",
+"-1.501727,-0.000000,-1.948458",
+"-1.477343,-0.000000,-1.751060",
+"-1.500256,-0.000000,-1.536978",
+"-1.471957,-0.000000,-1.503536",
+"-1.440187,-0.000093,-1.486567",
+"-1.443427,-0.000000,-1.488335",
+"0.070932,0.000000,-6.006474",
+"0.070932,-0.031142,-6.018322",
+"0.051360,0.000000,-6.655296",
+"0.051360,-0.031142,-6.661287",
+"-0.342788,-0.037377,-0.950579",
+"-0.335869,-0.036324,-0.992296",
+"-0.279072,-0.037179,-0.950582",
+"-0.266562,-0.036804,-0.983977",
+"-0.828336,-0.029218,-1.032547",
+"-0.812950,-0.083859,-1.026105",
+"-0.813605,-0.033235,-0.950584",
+"-0.772411,-0.125239,-0.848132",
+"-0.797587,-0.123289,-1.020034",
+"-0.751779,-0.148532,-0.848132",
+"-0.773052,-0.146884,-1.014840",
+"-0.657560,-0.155830,-1.007679",
+"-0.649783,-0.156432,-0.848132",
+"-0.516303,-0.166771,-1.000091",
+"-0.523710,-0.166197,-0.848132",
+"-0.403360,-0.175519,-0.991960",
+"-0.421714,-0.174097,-0.848132",
+"-0.372944,-0.156180,-0.989148",
+"-0.393597,-0.154580,-0.848132",
+"-0.337668,-0.078091,-0.989385",
+"-0.360134,-0.077290,-0.848132",
+"-0.342788,-0.037377,-0.950579",
+"-0.343011,0.000000,-0.950575",
+"-0.360595,0.000000,-0.848132",
+"-0.361119,-0.077255,-0.768875",
+"-0.394702,-0.154494,-0.748638",
+"-0.423039,-0.173995,-0.737902",
+"-0.524603,-0.166128,-0.674360",
+"-0.648397,-0.156539,-0.599608",
+"-0.747327,-0.148877,-0.551938",
+"-0.766784,-0.125675,-0.525789",
+"-0.804549,-0.000000,-0.848132",
+"-0.796406,-0.000000,-0.459118",
+"-0.766784,0.125675,-0.525789",
+"-0.772411,0.125239,-0.848132",
+"-0.747327,0.148877,-0.551938",
+"-0.751779,0.148532,-0.848132",
+"-0.649783,0.156432,-0.848132",
+"-0.648397,0.156539,-0.599608",
+"-0.523710,0.166197,-0.848132",
+"-0.524603,0.166128,-0.674360",
+"-0.421714,0.174097,-0.848132",
+"-0.423039,0.173995,-0.737902",
+"-0.393597,0.154580,-0.848132",
+"-0.394702,0.154494,-0.748638",
+"-0.360134,0.077290,-0.848132",
+"-0.361119,0.077255,-0.768875",
+"-0.828336,0.029218,-1.032547",
+"-0.813605,0.033235,-0.950584",
+"-0.812950,0.083859,-1.026105",
+"-0.797587,0.123289,-1.020034",
+"-0.773052,0.146884,-1.014840",
+"-0.657560,0.155830,-1.007679",
+"-0.516303,0.166771,-1.000091",
+"-0.403360,0.175519,-0.991960",
+"-0.372944,0.156180,-0.989148",
+"-0.337668,0.078091,-0.989385",
+"-0.342788,0.037377,-0.950579",
+"-0.335869,0.036324,-0.992296",
+"-0.822134,-0.000000,-0.950584",
+"-0.361717,0.000000,-0.766346",
+"-0.359606,-0.180837,-4.209639",
+"-0.427179,-0.168896,-4.143333",
+"-0.418984,-0.168896,-4.321065",
+"-0.659642,-0.125843,-4.114903",
+"-0.596035,-0.131536,-4.201313",
+"-0.629525,-0.149778,-4.101519",
+"-0.595154,-0.153733,-4.143135",
+"-0.595553,-0.153733,-4.078336",
+"-0.554418,-0.157460,-4.053978",
+"-0.417715,-0.147347,-4.378016",
+"-0.344165,-0.160341,-4.270916",
+"-0.319521,-0.074192,-4.273531",
+"-0.305160,-0.079503,-4.238443",
+"-0.332339,-0.162145,-4.233377",
+"-0.370181,-0.179620,-4.251645",
+"-0.301175,-0.021343,-4.245254",
+"-0.312974,-0.021207,-4.280988",
+"-0.427343,-0.020886,-4.386175",
+"-0.591938,-0.014142,-4.217099",
+"-0.698774,-0.011440,-4.077165",
+"-0.931160,-0.024367,-1.039072",
+"-0.884097,-0.029165,-0.950600",
+"-0.813605,-0.033235,-0.950584",
+"-1.443427,-0.000000,-1.488335",
+"-1.440187,-0.000093,-1.486567",
+"-1.189404,-0.000000,-1.349434",
+"-1.190560,-0.007297,-1.350346",
+"-0.599457,0.153733,-3.444036",
+"-0.598235,0.153733,-3.642541",
+"-0.710436,0.141465,-3.556574",
+"-0.743843,0.090301,-3.509829",
+"-0.735974,0.117128,-3.494798",
+"-0.735124,0.117128,-3.531741",
+"-0.712299,0.141465,-3.465849",
+"-0.691683,0.143746,-3.444036",
+"-0.599339,0.153733,-3.355505",
+"-0.459423,0.168896,-3.444036",
+"-0.459693,0.168896,-3.221925",
+"-0.346133,0.181164,-3.444036",
+"-0.316284,0.181164,-3.115884",
+"-0.272519,0.162691,-3.086283",
+"-0.316383,0.162691,-3.444036",
+"-0.286007,0.081345,-3.444036",
+"0.937735,0.081345,-3.026564",
+"0.965279,0.022191,-2.988009",
+"-0.281563,0.022184,-3.444036",
+"-0.283721,0.022091,-3.532191",
+"-0.288738,0.081083,-3.557293",
+"-0.319509,0.162584,-3.598673",
+"-0.349108,0.181092,-3.613086",
+"-0.449626,0.168896,-3.656514",
+"-0.525409,0.161136,-3.694073",
+"-1.139213,0.000000,-3.633500",
+"-1.122229,0.000000,-3.519050",
+"-1.145163,0.000000,-3.458533",
+"-1.135833,0.000000,-3.483153",
+"-1.145163,0.000000,-3.753470",
+"-1.145163,0.000000,-3.673596",
+"-1.145163,0.000000,-3.834539",
+"-1.145163,0.000000,-3.866092",
+"-0.970402,0.004414,-3.725756",
+"-0.978323,0.004273,-3.332362",
+"-1.501727,-0.000000,-3.220610",
+"-0.759459,0.009930,-3.841037",
+"-0.770024,0.009751,-3.444036",
+"-0.942695,0.009638,-3.173961",
+"-0.755598,0.009996,-3.986140",
+"-1.145163,0.000000,-4.008642",
+"-1.145163,0.000000,-4.170018",
+"-1.145163,0.000000,-4.083698",
+"-0.736537,0.010485,-4.024262",
+"-0.735595,0.010509,-4.028938",
+"-1.140991,0.000000,-4.256351",
+"-0.698774,0.011440,-4.077165",
+"-1.108464,0.000000,-4.340297",
+"-0.683435,0.153733,-2.063146",
+"-0.840148,0.141465,-2.071699",
+"-0.834487,0.141465,-1.813332",
+"-0.857430,0.118199,-1.620878",
+"-0.825124,0.142469,-1.606334",
+"-0.867476,0.117128,-1.813332",
+"-0.874010,0.117128,-2.076952",
+"-0.876476,0.117128,-2.176485",
+"-0.842663,0.141465,-2.186455",
+"-0.684842,0.153733,-2.227008",
+"-0.488264,0.168896,-2.278129",
+"-0.489993,0.168896,-2.058782",
+"0.500023,0.181164,-2.313333",
+"-0.333563,0.181164,-2.057035",
+"-0.491929,0.168896,-1.813332",
+"-0.681290,0.153733,-1.813332",
+"-0.496209,0.168448,-1.570964",
+"-0.350737,0.179893,-1.551152",
+"-0.338732,0.181164,-1.813332",
+"-0.292480,0.162691,-2.057087",
+"0.684994,0.162691,-2.325545",
+"0.709122,0.162691,-2.586856",
+"0.521069,0.181164,-2.576719",
+"-0.192528,0.168896,-2.541849",
+"-1.069873,0.153733,-2.500565",
+"-1.775621,0.141465,-2.462949",
+"-1.926985,0.117128,-2.453463",
+"-2.128953,0.010212,-2.432677",
+"-0.921292,0.010413,-2.149561",
+"-0.919420,0.010434,-2.084459",
+"-0.911620,0.010524,-1.813332",
+"-0.900455,0.012132,-1.637731",
+"-0.895067,0.012907,-1.552992",
+"-0.854789,0.118481,-1.570285",
+"-0.823243,0.142670,-1.564757",
+"-0.677386,0.154155,-1.585096",
+"-0.251461,0.022613,-1.813332",
+"-0.244490,0.022501,-2.054975",
+"-0.250583,0.081345,-2.055318",
+"0.873845,0.081345,-2.334817",
+"0.900842,0.081345,-2.591871",
+"0.928829,0.022291,-2.592386",
+"0.901241,0.022370,-2.334817",
+"-0.269574,0.025895,-1.513762",
+"-0.257427,0.081345,-1.813332",
+"-0.273821,0.080525,-1.518504",
+"-0.312762,0.161172,-1.540475",
+"-0.298503,0.162691,-1.813332",
+"0.963086,0.022192,-2.912204",
+"0.904746,0.081345,-2.629034",
+"0.934487,0.081345,-2.912204",
+"0.718883,0.162691,-2.693217",
+"0.738977,0.162691,-2.912204",
+"0.533190,0.181164,-2.730598",
+"0.547494,0.181164,-2.912204",
+"-0.184364,0.168896,-2.820676",
+"-0.181685,0.168896,-2.912204",
+"-0.831232,0.157968,-2.912204",
+"-0.459693,0.168896,-3.221925",
+"-0.316284,0.181164,-3.115884",
+"-0.272519,0.162691,-3.086283",
+"0.937735,0.081345,-3.026564",
+"0.965279,0.022191,-2.988009",
+"-0.599339,0.153733,-3.355505",
+"-1.083456,0.153733,-2.965087",
+"-1.815586,0.141465,-3.067065",
+"-0.691683,0.143746,-3.444036",
+"-0.712746,0.141465,-3.444036",
+"-0.712299,0.141465,-3.465849",
+"-0.737143,0.117128,-3.444036",
+"-0.735974,0.117128,-3.494798",
+"-0.743843,0.090301,-3.509829",
+"-0.770024,0.009751,-3.444036",
+"-0.759459,0.009930,-3.841037",
+"-0.728513,0.117128,-3.818881",
+"-0.735124,0.117128,-3.531741",
+"-0.705509,0.141465,-3.796561",
+"-0.710436,0.141465,-3.556574",
+"-0.597687,0.153733,-3.731546",
+"-0.598235,0.153733,-3.642541",
+"-0.525409,0.161136,-3.694073",
+"-0.554418,0.157460,-4.053978",
+"-0.427179,0.168896,-4.143333",
+"-0.445024,0.168896,-3.756325",
+"-0.449626,0.168896,-3.656514",
+"-0.352811,0.181002,-3.823510",
+"-0.359606,0.180837,-4.209639",
+"-0.332339,0.162145,-4.233377",
+"-0.324558,0.162411,-3.848468",
+"-0.349108,0.181092,-3.613086",
+"-0.595553,0.153733,-4.078336",
+"-0.595882,0.153733,-4.024859",
+"-0.629525,0.149778,-4.101519",
+"-0.692193,0.142567,-4.025641",
+"-0.659642,0.125843,-4.114903",
+"-0.711821,0.121172,-4.044017",
+"-0.698774,0.011440,-4.077165",
+"-0.735595,0.010509,-4.028938",
+"-0.724725,0.117128,-3.983434",
+"-0.736537,0.010485,-4.024262",
+"-0.755598,0.009996,-3.986140",
+"-0.727155,0.117128,-3.877876",
+"-0.703334,0.141465,-3.902510",
+"-0.701767,0.141465,-3.978829",
+"-0.319509,0.162584,-3.598673",
+"-0.288738,0.081083,-3.557293",
+"-0.296468,0.080339,-3.877943",
+"-0.305160,0.079503,-4.238443",
+"-0.301175,0.021343,-4.245254",
+"-0.292624,0.021710,-3.895892",
+"-0.283721,0.022091,-3.532191",
+"0.057907,0.031142,-3.412982",
+"0.057907,0.031142,-3.649188",
+"-0.283721,0.022091,-3.532191",
+"0.073008,0.031142,-3.749348",
+"-0.292624,0.021710,-3.895892",
+"0.090485,0.031142,-4.162933",
+"0.090485,0.031142,-4.358974",
+"0.080524,0.031142,-4.544520",
+"-0.301175,0.021343,-4.245254",
+"-0.459423,-0.168896,-3.444036",
+"-0.599457,-0.153733,-3.444036",
+"-0.598235,-0.153733,-3.642541",
+"-0.710436,-0.141465,-3.556574",
+"-0.743843,-0.090301,-3.509829",
+"-0.735124,-0.117128,-3.531741",
+"-0.735974,-0.117128,-3.494798",
+"-0.712299,-0.141465,-3.465849",
+"-0.691683,-0.143746,-3.444036",
+"-0.599339,-0.153733,-3.355505",
+"-0.459693,-0.168896,-3.221925",
+"-0.346133,-0.181164,-3.444036",
+"-0.316284,-0.181164,-3.115884",
+"0.743296,-0.162691,-3.086283",
+"-0.316383,-0.162691,-3.444036",
+"-0.286007,-0.081345,-3.444036",
+"0.937735,-0.081345,-3.026564",
+"0.965279,-0.022191,-2.988009",
+"-0.281563,-0.022184,-3.444036",
+"-0.283721,-0.022091,-3.532191",
+"-0.288738,-0.081083,-3.557293",
+"-0.319509,-0.162584,-3.598673",
+"-0.349108,-0.181092,-3.613086",
+"-0.449626,-0.168896,-3.656514",
+"-0.525409,-0.161136,-3.694073",
+"0.057907,-0.031142,-3.412982",
+"-0.281563,-0.022184,-3.444036",
+"0.285555,-0.031142,-3.166790",
+"0.232515,-0.031142,-3.071515",
+"1.759248,-0.031142,-3.009715",
+"3.184764,-0.031142,-2.917396",
+"3.042699,-0.031142,-2.757765",
+"-1.488293,-0.000000,-2.172463",
+"-0.921292,0.010413,-2.149561",
+"-1.501727,-0.000000,-2.242284",
+"-2.128953,0.010212,-2.432677",
+"-1.501727,-0.000000,-2.326572",
+"-1.440187,0.000093,-1.486567",
+"-0.895067,0.012907,-1.552992",
+"-1.443427,-0.000000,-1.488335",
+"-1.471957,-0.000000,-1.503536",
+"-0.900455,0.012132,-1.637731",
+"-1.500256,-0.000000,-1.536978",
+"-1.477343,-0.000000,-1.751060",
+"-0.911620,0.010524,-1.813332",
+"-1.258776,0.004451,-2.086504",
+"-0.919420,0.010434,-2.084459",
+"-1.505682,-0.000000,-2.122219",
+"-1.510711,-0.000000,-2.039430",
+"-1.501727,-0.000000,-1.948458",
+"0.057907,-0.031142,-3.412982",
+"-0.283721,-0.022091,-3.532191",
+"0.057907,-0.031142,-3.649188",
+"-0.292624,-0.021710,-3.895892",
+"0.073008,-0.031142,-3.749348",
+"-0.288738,-0.081083,-3.557293",
+"-0.296468,-0.080339,-3.877943",
+"-0.301175,-0.021343,-4.245254",
+"-0.305160,-0.079503,-4.238443",
+"-0.332339,-0.162145,-4.233377",
+"-0.324558,-0.162411,-3.848468",
+"-0.319509,-0.162584,-3.598673",
+"-0.349108,-0.181092,-3.613086",
+"-0.352811,-0.181002,-3.823510",
+"-0.359606,-0.180837,-4.209639",
+"-0.427179,-0.168896,-4.143333",
+"-0.445024,-0.168896,-3.756325",
+"-0.525409,-0.161136,-3.694073",
+"-0.449626,-0.168896,-3.656514",
+"0.090485,-0.031142,-4.162933",
+"0.090485,-0.031142,-4.358974",
+"0.080524,-0.031142,-4.544520",
+"-1.145163,0.000000,-4.008642",
+"-0.755598,-0.009996,-3.986140",
+"-0.727155,-0.117128,-3.877876",
+"-0.728513,-0.117128,-3.818881",
+"-0.735124,-0.117128,-3.531741",
+"-0.705509,-0.141465,-3.796561",
+"-0.710436,-0.141465,-3.556574",
+"-0.597687,-0.153733,-3.731546",
+"-0.598235,-0.153733,-3.642541",
+"-0.554418,-0.157460,-4.053978",
+"-0.595882,-0.153733,-4.024859",
+"-0.595553,-0.153733,-4.078336",
+"-0.629525,-0.149778,-4.101519",
+"-0.703334,-0.141465,-3.902510",
+"-0.701767,-0.141465,-3.978829",
+"-0.724725,-0.117128,-3.983434",
+"-0.736537,-0.010485,-4.024262",
+"-0.735595,-0.010509,-4.028938",
+"-0.711821,-0.121172,-4.044017",
+"-0.698774,-0.011440,-4.077165",
+"-0.659642,-0.125843,-4.114903",
+"-0.692193,-0.142567,-4.025641",
+"-1.108464,0.000000,-4.340297",
+"-1.140991,0.000000,-4.256351",
+"-1.145163,0.000000,-4.170018",
+"-1.145163,0.000000,-4.083698",
+"-0.434448,0.173111,0.221348",
+"-0.536444,0.165211,0.221348",
+"-0.547842,0.164328,0.501347",
+"-0.681576,0.153970,0.453805",
+"-0.451602,0.172930,0.541030",
+"-0.407413,0.153510,0.221348",
+"-0.406987,0.153543,0.152898",
+"-0.433874,0.173155,0.132602",
+"-0.535878,0.165255,0.188200",
+"-0.609294,0.159568,0.244235",
+"-0.666147,0.155165,0.265614",
+"-0.785782,0.145218,0.407765",
+"-0.773463,0.146566,0.299789",
+"-0.809417,0.121735,0.396342",
+"-0.797961,0.122937,0.309894",
+"-0.841937,-0.000000,0.380670",
+"-0.831817,-0.000000,0.312150",
+"-0.797961,-0.122937,0.309894",
+"-0.809417,-0.121735,0.396342",
+"-0.773463,-0.146566,0.299789",
+"-0.785782,-0.145218,0.407765",
+"-0.666147,-0.155165,0.265614",
+"-0.681576,-0.153970,0.453805",
+"-0.536444,-0.165211,0.221348",
+"-0.547842,-0.164328,0.501347",
+"-0.434448,-0.173111,0.221348",
+"-0.451602,-0.172930,0.541030",
+"-0.407413,-0.153510,0.221348",
+"-0.395936,-0.153390,0.561143",
+"-0.373971,-0.076755,0.221348",
+"-0.359747,-0.076691,0.585969",
+"-0.374452,0.000000,0.221348",
+"-0.357808,0.000000,0.597561",
+"-0.359747,0.076691,0.585969",
+"-0.609294,-0.159568,0.244235",
+"-0.535878,-0.165255,0.188200",
+"-0.433874,-0.173155,0.132602",
+"-0.406987,-0.153543,0.152898",
+"-0.373745,-0.076767,0.172240",
+"-0.374291,0.000000,0.167310",
+"-0.373971,0.076755,0.221348",
+"-0.395936,0.153390,0.561143",
+"-0.373745,0.076767,0.172240",
+"-0.815387,0.124169,0.221348",
+"-0.797961,0.122937,0.309894",
+"-0.762072,0.177503,0.221348",
+"-0.773463,0.146566,0.299789",
+"-0.831817,-0.000000,0.312150",
+"-0.847567,-0.000000,0.221348",
+"-0.815387,-0.124169,0.221348",
+"-0.797961,-0.122937,0.309894",
+"-0.762072,-0.177503,0.221348",
+"-0.773463,-0.146566,0.299789",
+"-0.666147,-0.155165,0.265614",
+"-0.609294,-0.159568,0.244235",
+"-0.660939,-0.201963,0.168522",
+"-0.535878,-0.165255,0.188200",
+"-0.534826,-0.205750,0.068586",
+"-0.433874,-0.173155,0.132602",
+"-0.423122,-0.203722,-0.046561",
+"-0.372875,-0.153624,-0.014966",
+"-0.406987,-0.153543,0.152898",
+"-0.331308,-0.076808,-0.000455",
+"-0.373745,-0.076767,0.172240",
+"-0.332161,0.000000,0.003834",
+"-0.374291,0.000000,0.167310",
+"-0.373745,0.076767,0.172240",
+"-0.331308,0.076808,-0.000455",
+"-0.406987,0.153543,0.152898",
+"-0.372875,0.153624,-0.014966",
+"-0.433874,0.173155,0.132602",
+"-0.423122,0.203722,-0.046561",
+"-0.534826,0.205750,0.068586",
+"-0.535878,0.165255,0.188200",
+"-0.660939,0.201963,0.168522",
+"-0.609294,0.159568,0.244235",
+"-0.666147,0.155165,0.265614",
+"-0.372981,0.000000,-0.271664",
+"-0.371709,0.076873,-0.270083",
+"-0.385884,0.153738,-0.252590",
+"-0.431617,0.173336,-0.192095",
+"-0.531423,0.165600,-0.096054",
+"-0.656706,0.155896,-0.011939",
+"-0.758535,0.148009,0.053272",
+"-0.779650,0.124678,0.054750",
+"-0.812336,-0.000000,0.075613",
+"-0.779650,-0.124678,0.054750",
+"-0.758535,-0.148009,0.053272",
+"-0.656706,-0.155896,-0.011939",
+"-0.531423,-0.165600,-0.096054",
+"-0.431617,-0.173336,-0.192095",
+"-0.385884,-0.153738,-0.252590",
+"-0.371709,-0.076873,-0.270083",
+"-0.431091,-0.203197,-0.279462",
+"-0.373277,-0.153788,-0.332268",
+"-0.337446,-0.076925,-0.372936",
+"-0.338653,0.000000,-0.375665",
+"-0.337446,0.076925,-0.372936",
+"-0.373277,0.153788,-0.332268",
+"-0.431091,0.203197,-0.279462",
+"-0.529416,0.204164,-0.190352",
+"-0.526704,-0.165965,-0.363955",
+"-0.652799,-0.210928,-0.103815",
+"-0.646308,-0.156701,-0.282380",
+"-0.753504,-0.189905,-0.052135",
+"-0.744326,-0.149109,-0.244512",
+"-0.801270,-0.125093,-0.045438",
+"-0.764225,-0.125873,-0.234956",
+"-0.833959,-0.000000,-0.024631",
+"-0.797238,-0.000000,-0.218584",
+"-0.764225,0.125873,-0.234956",
+"-0.801270,0.125093,-0.045438",
+"-0.744326,0.149109,-0.244512",
+"-0.753504,0.189905,-0.052135",
+"-0.646308,0.156701,-0.282380",
+"-0.652799,0.210928,-0.103815",
+"-0.526704,0.165965,-0.363955",
+"-0.529416,-0.204164,-0.190352",
+"-0.428623,0.173562,-0.447868",
+"-0.400886,0.154016,-0.480244",
+"-0.366794,0.077053,-0.538599",
+"-0.367074,0.000000,-0.569100",
+"-0.366794,-0.077053,-0.538599",
+"-0.400886,-0.154016,-0.480244",
+"-0.428623,-0.173562,-0.447868",
+"-0.822770,-0.000000,-0.321014",
+"-0.792593,0.124907,-0.351432",
+"-0.743307,0.184380,-0.357346",
+"-0.646992,0.220156,-0.424800",
+"-0.525944,0.233210,-0.509229",
+"-0.426012,0.206026,-0.584068",
+"-0.374071,0.154241,-0.627078",
+"-0.331239,0.077157,-0.674103",
+"-0.331723,0.000000,-0.685847",
+"-0.331239,-0.077157,-0.674103",
+"-0.374071,-0.154241,-0.627078",
+"-0.426012,-0.206026,-0.584068",
+"-0.525944,-0.233210,-0.509229",
+"-0.646992,-0.220156,-0.424800",
+"-0.743307,-0.184380,-0.357346",
+"-0.792593,-0.124907,-0.351432",
+"-0.796406,-0.000000,-0.459118",
+"-0.766784,0.125675,-0.525789",
+"-0.747327,0.148877,-0.551938",
+"-0.648397,0.156539,-0.599608",
+"-0.524603,0.166128,-0.674360",
+"-0.423039,0.173995,-0.737902",
+"-0.394702,0.154494,-0.748638",
+"-0.361119,0.077255,-0.768875",
+"-0.361717,0.000000,-0.766346",
+"-0.361119,-0.077255,-0.768875",
+"-0.394702,-0.154494,-0.748638",
+"-0.423039,-0.173995,-0.737902",
+"-0.524603,-0.166128,-0.674360",
+"-0.648397,-0.156539,-0.599608",
+"-0.747327,-0.148877,-0.551938",
+"-0.766784,-0.125675,-0.525789",
+"0.121279,0.000000,-1.459801",
+"0.126106,0.031682,-1.463593",
+"0.015641,0.000000,-1.380629",
+"0.017890,0.032335,-1.382069",
+"-0.128553,0.033869,-1.245411",
+"-0.134209,0.000000,-1.241685",
+"-0.134209,0.000000,-1.241685",
+"-0.128553,-0.033869,-1.245411",
+"0.015641,0.000000,-1.380629",
+"0.017890,-0.032335,-1.382069",
+"0.126106,-0.031682,-1.463593",
+"3.039588,0.000000,-2.754360",
+"3.042699,0.031142,-2.757765",
+"2.921345,0.000000,-2.463430",
+"2.921345,0.031142,-2.464729",
+"2.848321,0.000000,-2.431148",
+"2.848321,0.031142,-2.431148",
+"2.848321,-0.031142,-2.431148",
+"2.921345,-0.031142,-2.464729",
+"2.848321,0.000000,-2.431148",
+"3.042699,-0.031142,-2.757765",
+"3.039588,0.000000,-2.754360",
+"-0.822134,-0.000000,-0.950584",
+"-0.813605,0.033235,-0.950584",
+"-0.885021,-0.000000,-0.950599",
+"-0.884097,0.029165,-0.950600",
+"-0.938152,-0.000000,-1.048977",
+"-0.931160,0.024367,-1.039072",
+"-0.931160,-0.024367,-1.039072",
+"-0.884097,-0.029165,-0.950600",
+"-0.938152,-0.000000,-1.048977",
+"-0.885021,-0.000000,-0.950599",
+"-0.813605,-0.033235,-0.950584",
+"-0.291960,0.029639,-1.257043",
+"-0.128553,0.033869,-1.245411",
+"-0.281157,0.027994,-1.322179",
+"0.017890,0.032335,-1.382069",
+"-0.269574,0.025895,-1.513762",
+"0.126106,0.031682,-1.463593",
+"-0.266562,-0.036804,-0.983977",
+"-0.270256,0.000000,-0.986354",
+"-0.279072,-0.037179,-0.950582",
+"-0.284025,0.000000,-0.950577",
+"-0.343011,0.000000,-0.950575",
+"-0.342788,-0.037377,-0.950579",
+"-0.342788,0.037377,-0.950579",
+"-0.279072,0.037179,-0.950582",
+"-0.284025,0.000000,-0.950577",
+"-0.270256,0.000000,-0.986354",
+"-0.266562,0.036804,-0.983977",
+"0.107752,0.000000,-8.322790",
+"0.107752,0.050207,-8.322790",
+"0.090485,0.000000,-7.819195",
+"0.090485,0.031142,-7.813179",
+"0.082160,0.031142,-7.687520",
+"0.082160,0.000000,-7.690792",
+"0.082160,0.000000,-7.690792",
+"0.082160,-0.031142,-7.687520",
+"0.090485,0.000000,-7.819195",
+"0.090485,-0.031142,-7.813179",
+"0.107752,-0.050207,-8.322790",
+"0.080524,-0.031142,-4.544520",
+"0.070932,-0.031142,-4.723197",
+"0.080359,0.000000,-4.545165",
+"0.070932,0.000000,-4.722299",
+"0.070932,0.031142,-4.723197",
+"0.080524,0.031142,-4.544520",
+"0.285555,-0.031142,-3.166790",
+"0.057907,-0.031142,-3.412982",
+"0.285555,0.000000,-3.169318",
+"0.057907,0.000000,-3.416383",
+"0.057907,0.031142,-3.412982",
+"0.285555,0.031142,-3.166790",
+"0.051360,0.000000,-6.655296",
+"0.051360,-0.031142,-6.661287",
+"0.037621,0.000000,-6.721809",
+"0.037621,-0.031142,-6.725714",
+"0.051360,-0.031142,-6.788589",
+"0.051360,0.000000,-6.782248",
+"0.051360,0.000000,-6.782248",
+"0.051360,0.031142,-6.788589",
+"0.037621,0.031142,-6.725714",
+"0.051360,0.031142,-6.661287",
+"0.051360,0.000000,-6.655296",
+"2.848321,-0.031142,-2.431148",
+"2.848321,0.000000,-2.431148",
+"2.868173,-0.031142,-2.337097",
+"2.868173,0.000000,-2.343616",
+"0.228557,0.000000,-2.234667",
+"0.228557,-0.031142,-2.233399",
+"0.228557,0.031142,-2.233399",
+"0.228557,0.000000,-2.234667",
+"2.868173,0.031142,-2.337097",
+"2.868173,0.000000,-2.343616",
+"2.848321,0.031142,-2.431148",
+"-1.303612,0.000000,-8.989327",
+"-1.305940,0.000000,-9.044627",
+"-0.864925,-0.031142,-9.044627",
+"-1.296609,0.000000,-9.085978",
+"-1.305940,0.000000,-9.143233",
+"-0.885721,-0.031142,-11.480952",
+"-0.504952,-0.031142,-11.525787",
+"-1.044206,-0.031142,-10.333737",
+"-0.294966,-0.031142,-10.799282",
+"-0.907120,-0.031142,-9.619235",
+"-0.478699,-0.031142,-9.619235",
+"-0.880206,-0.031142,-9.298851",
+"-0.478699,-0.031142,-9.298851",
+"-0.478699,-0.031142,-9.044627",
+"-1.321222,0.000000,-9.298851",
+"-1.334298,0.000000,-9.619235",
+"-1.284033,0.000000,-9.719844",
+"-1.274191,0.000000,-9.760203",
+"-1.265974,0.000000,-9.856019",
+"-1.272264,0.000000,-9.918247",
+"-1.281119,0.000000,-9.959308",
+"-1.301112,0.000000,-10.213007",
+"-1.291913,0.000000,-10.285469",
+"-1.298918,0.000000,-10.393349",
+"-1.285946,0.000000,-10.442584",
+"-1.284109,0.000000,-10.519143",
+"-1.295844,0.000000,-10.645988",
+"-1.324024,0.000000,-10.938330",
+"-1.307065,0.000000,-11.037432",
+"-1.270210,0.000000,-11.107378",
+"-1.280504,0.000000,-11.225766",
+"-1.319739,0.000000,-11.290488",
+"-1.249825,0.000000,-11.627669",
+"-1.219816,-0.011001,-11.697840",
+"-1.099302,-0.031142,-12.033273",
+"-0.914429,-0.031142,-12.361553",
+"-0.861662,-0.031142,-12.469915",
+"-0.836276,-0.031142,-12.525468",
+"-0.730655,-0.031142,-12.788734",
+"-0.716330,-0.031142,-12.819342",
+"-0.696501,-0.031142,-12.852378",
+"-0.680604,-0.031142,-12.919670",
+"-0.559087,-0.031142,-13.196249",
+"0.051360,-0.031142,-6.788589",
+"-0.478699,-0.031142,-7.309338",
+"0.051360,-0.031142,-6.884630",
+"0.076697,-0.031142,-7.090951",
+"0.090485,-0.031142,-7.309339",
+"0.054405,-0.031142,-7.357378",
+"0.019888,-0.031142,-7.459443",
+"0.049026,-0.031142,-7.605735",
+"0.082160,-0.031142,-7.687520",
+"0.090485,-0.031142,-7.813179",
+"0.107752,-0.050207,-8.322790",
+"0.043839,-0.050207,-8.558253",
+"-0.005595,-0.050207,-8.719522",
+"-0.041474,-0.050207,-8.946344",
+"-0.014933,-0.050207,-9.129520",
+"0.062909,-0.050207,-9.249169",
+"0.062909,-0.050207,-9.432812",
+"0.041963,-0.050207,-9.661290",
+"0.048744,-0.050207,-9.745686",
+"0.027994,-0.050207,-9.504519",
+"0.017350,-0.050207,-9.705999",
+"0.007234,-0.031142,-10.354818",
+"-0.006749,-0.031142,-10.494394",
+"-0.031165,-0.031142,-10.737923",
+"-0.033376,-0.031142,-10.989223",
+"-0.332321,-0.031142,-12.450246",
+"-0.498232,-0.031142,-13.290452",
+"-0.362438,-0.031142,-13.668348",
+"-0.343286,-0.031142,-13.670047",
+"-0.443589,-0.031142,-13.461515",
+"-0.330247,-0.031142,-13.656573",
+"-0.469964,-0.031142,-13.394726",
+"-0.235590,-0.031142,-13.206559",
+"-0.209926,-0.031142,-13.013816",
+"-0.101458,-0.031142,-12.669041",
+"-0.055224,-0.031142,-12.469091",
+"-0.012219,-0.031142,-12.229509",
+"-0.001785,-0.031142,-11.401309",
+"0.032562,-0.031142,-11.969882",
+"0.016311,-0.031142,-12.121605",
+"0.090485,-0.031142,-4.096630",
+"0.090485,-0.031142,-4.162933",
+"0.090485,0.000000,-4.096154",
+"0.090485,0.000000,-4.165751",
+"0.090485,0.031142,-4.162933",
+"0.090485,0.031142,-4.096630",
+"-0.417715,0.147347,-4.378016",
+"-0.596035,0.131536,-4.201313",
+"-0.418984,0.168896,-4.321065",
+"-0.595154,0.153733,-4.143135",
+"-0.427179,0.168896,-4.143333",
+"-0.359606,0.180837,-4.209639",
+"-0.370181,0.179620,-4.251645",
+"-0.332339,0.162145,-4.233377",
+"-0.344165,0.160341,-4.270916",
+"-0.305160,0.079503,-4.238443",
+"-0.319521,0.074192,-4.273531",
+"-0.591938,0.014142,-4.217099",
+"-0.427343,0.020886,-4.386175",
+"-0.312974,0.021207,-4.280988",
+"-0.301175,0.021343,-4.245254",
+"-0.554418,0.157460,-4.053978",
+"-0.595553,0.153733,-4.078336",
+"-0.629525,0.149778,-4.101519",
+"-0.659642,0.125843,-4.114903",
+"-0.698774,0.011440,-4.077165",
+"-0.403360,0.175519,-0.991960",
+"-0.372944,0.156180,-0.989148",
+"-0.339154,0.158797,-1.219870",
+"-0.300628,0.079412,-1.222269",
+"-0.337668,0.078091,-0.989385",
+"-0.335869,0.036324,-0.992296",
+"-0.297634,0.030503,-1.222832",
+"-0.291960,0.029639,-1.257043",
+"-0.295230,0.079605,-1.256206",
+"-0.333334,0.159248,-1.259608",
+"-0.374061,0.177788,-1.221559",
+"-0.368575,0.178213,-1.264553",
+"-0.504635,0.167675,-1.239472",
+"-0.502786,0.167818,-1.277389",
+"-0.669839,0.154879,-1.259601",
+"-0.671629,0.154740,-1.296328",
+"-0.805990,0.144333,-1.272956",
+"-0.810312,0.143998,-1.306828",
+"-0.840164,0.119991,-1.310748",
+"-0.836301,0.120290,-1.284373",
+"-0.880391,0.015020,-1.322179",
+"-0.875064,0.020457,-1.298794",
+"-0.876396,0.016110,-1.299949",
+"-0.828336,0.029218,-1.032547",
+"-0.812950,0.083859,-1.026105",
+"-0.797587,0.123289,-1.020034",
+"-0.773052,0.146884,-1.014840",
+"-0.657560,0.155830,-1.007679",
+"-0.516303,0.166771,-1.000091",
+"-0.266562,0.036804,-0.983977",
+"-0.214923,0.035256,-1.121821",
+"-0.335869,0.036324,-0.992296",
+"-0.297634,0.030503,-1.222832",
+"-0.157356,0.034332,-1.204195",
+"-0.128553,0.033869,-1.245411",
+"-0.291960,0.029639,-1.257043",
+"-0.881346,0.116801,1.242916",
+"-0.894937,0.100162,1.261801",
+"-0.764620,0.125842,1.328633",
+"-0.767189,0.110057,1.353392",
+"-0.593803,0.139073,1.419660",
+"-0.928549,-0.113145,1.173012",
+"-0.945585,-0.000000,1.235798",
+"-0.974169,-0.000000,1.149094",
+"-0.928549,0.113145,1.173012",
+"-0.891812,0.137686,1.186652",
+"-0.748340,0.148798,1.283957",
+"-0.570998,0.162534,1.382339",
+"-0.488041,0.147265,1.452507",
+"-0.427525,0.173647,1.435516",
+"-0.395690,0.154418,1.456969",
+"-0.481534,0.132183,1.482102",
+"-0.609283,0.122288,1.437539",
+"-0.617181,-0.000000,1.433794",
+"-0.772540,-0.146998,0.748658",
+"-0.709779,-0.151785,0.800152",
+"-0.847550,-0.141268,0.784171",
+"-0.891812,-0.137686,1.186652",
+"-0.883745,-0.116838,0.811179",
+"-0.927979,-0.000000,0.821142",
+"-0.883745,0.116838,0.811179",
+"-0.847550,0.141268,0.784171",
+"-0.772540,0.146998,0.748658",
+"-0.709779,0.151785,0.800152",
+"-0.560824,0.163322,0.912313",
+"-0.422570,0.173166,1.011230",
+"-0.392802,0.153790,1.026838",
+"-0.355146,0.076909,1.050908",
+"-0.355722,0.077209,1.468928",
+"-0.351295,0.000000,1.054588",
+"-0.349679,0.000000,1.480887",
+"-0.355722,-0.077209,1.468928",
+"-0.355146,-0.076909,1.050908",
+"-0.395690,-0.154418,1.456969",
+"-0.392802,-0.153790,1.026838",
+"-0.427525,-0.173647,1.435516",
+"-0.422570,-0.173166,1.011230",
+"-0.570998,-0.162534,1.382339",
+"-0.560824,-0.163322,0.912313",
+"-0.748340,-0.148798,1.283957",
+"-0.764620,-0.125842,1.328633",
+"-0.593803,-0.139073,1.419660",
+"-0.488041,-0.147265,1.452507",
+"-0.481534,-0.132183,1.482102",
+"-0.440334,-0.066091,1.495103",
+"-0.433059,0.000000,1.508105",
+"-0.440334,0.066091,1.495103",
+"-0.609283,-0.122288,1.437539",
+"-0.767189,-0.110057,1.353392",
+"-0.894937,-0.100162,1.261801",
+"-0.881346,-0.116801,1.242916",
+"-0.781434,-0.000000,1.346526",
+"-1.138663,-0.009139,-1.309415",
+"-0.942971,-0.013935,-1.296636",
+"-1.061252,-0.011885,-1.248359",
+"-0.972906,-0.020110,-1.117548",
+"-0.890805,-0.015593,-1.299146",
+"-0.931160,-0.024367,-1.039072",
+"-0.828336,-0.029218,-1.032547",
+"-0.876396,-0.016110,-1.299949",
+"-0.880391,-0.015020,-1.322179",
+"-1.190560,-0.007297,-1.350346",
+"-0.266562,-0.036804,-0.983977",
+"-0.335869,-0.036324,-0.992296",
+"-0.214923,-0.035256,-1.121821",
+"-0.297634,-0.030503,-1.222832",
+"-0.157356,-0.034332,-1.204195",
+"-0.128553,-0.033869,-1.245411",
+"-0.291960,-0.029639,-1.257043",
+"-0.300628,-0.079412,-1.222269",
+"-0.295230,-0.079605,-1.256206",
+"-0.339154,-0.158797,-1.219870",
+"-0.333334,-0.159248,-1.259608",
+"-0.374061,-0.177788,-1.221559",
+"-0.368575,-0.178213,-1.264553",
+"-0.504635,-0.167675,-1.239472",
+"-0.502786,-0.167818,-1.277389",
+"-0.669839,-0.154879,-1.259601",
+"-0.671629,-0.154740,-1.296328",
+"-0.805990,-0.144333,-1.272956",
+"-0.810312,-0.143998,-1.306828",
+"-0.840164,-0.119991,-1.310748",
+"-0.836301,-0.120290,-1.284373",
+"-0.880391,-0.015020,-1.322179",
+"-0.875064,-0.020457,-1.298794",
+"-0.812950,-0.083859,-1.026105",
+"-0.797587,-0.123289,-1.020034",
+"-0.773052,-0.146884,-1.014840",
+"-0.657560,-0.155830,-1.007679",
+"-0.516303,-0.166771,-1.000091",
+"-0.403360,-0.175519,-0.991960",
+"-0.372944,-0.156180,-0.989148",
+"-0.337668,-0.078091,-0.989385",
+"-0.864925,-0.031142,-7.309339",
+"-0.794884,-0.031142,-5.875733",
+"-1.108464,0.000000,-4.340297",
+"-1.106809,0.000000,-4.406234",
+"-1.119243,0.000000,-4.486491",
+"-1.145163,0.000000,-4.550939",
+"-1.213798,0.000000,-4.965816",
+"-1.160097,0.000000,-5.281436",
+"-1.157470,0.000000,-5.437137",
+"-1.176420,0.000000,-5.496387",
+"-1.219081,0.000000,-5.544801",
+"-1.222022,0.000000,-5.867131",
+"-1.197041,0.000000,-6.095666",
+"-1.212788,0.000000,-6.182446",
+"-1.197348,0.000000,-6.277071",
+"-1.205714,0.000000,-6.366744",
+"-1.182172,0.000000,-6.446217",
+"-1.229207,0.000000,-6.654593",
+"-1.292102,0.000000,-7.309339",
+"-1.249810,0.000000,-7.416559",
+"-1.253101,0.000000,-7.571384",
+"-1.229318,0.000000,-7.643998",
+"-1.230404,0.000000,-7.724447",
+"-1.292102,0.000000,-7.910229",
+"-1.292102,0.000000,-8.060061",
+"-1.289737,0.000000,-8.279900",
+"-1.305940,0.000000,-8.389021",
+"-1.281424,0.000000,-8.536418",
+"-1.281073,0.000000,-8.644720",
+"-1.305997,0.000000,-8.738051",
+"-1.302886,0.000000,-8.846630",
+"-1.269962,0.000000,-8.927813",
+"0.027391,0.031142,-4.857055",
+"-0.025536,0.031142,-4.766785",
+"0.070932,0.031142,-4.723197",
+"-0.427343,0.020886,-4.386175",
+"-0.312974,0.021207,-4.280988",
+"-0.301175,0.021343,-4.245254",
+"0.080524,0.031142,-4.544520",
+"-0.698774,0.011440,-4.077165",
+"-0.591938,0.014142,-4.217099",
+"-1.108464,0.000000,-4.340297",
+"-0.733517,0.015693,-4.545612",
+"-0.364415,0.031142,-4.747726",
+"-0.302355,0.031142,-4.703326",
+"-0.233473,0.031142,-4.703326",
+"-0.171413,0.031142,-4.747726",
+"-0.128466,0.031142,-4.827732",
+"-0.113138,0.031142,-4.927496",
+"0.030780,0.031142,-5.007001",
+"-0.128466,0.031142,-5.027262",
+"-0.130674,0.031142,-5.031376",
+"0.014283,0.031142,-5.130307",
+"-0.171413,0.031142,-5.107267",
+"-0.478699,0.031142,-5.871437",
+"-0.233473,0.031142,-5.151667",
+"-0.302355,0.031142,-5.151667",
+"-0.364415,0.031142,-5.107267",
+"-0.478699,0.031142,-5.078241",
+"-0.407362,0.031142,-5.027261",
+"-0.422690,0.031142,-4.927496",
+"-0.407362,0.031142,-4.827731",
+"-0.739990,0.016367,-4.596475",
+"-0.794884,0.031142,-5.875733",
+"-0.478699,0.031142,-7.309338",
+"-0.864925,0.031142,-7.309339",
+"-0.478699,0.031142,-9.044627",
+"-0.864925,0.031142,-9.044627",
+"-1.106809,0.000000,-4.406234",
+"-1.119243,0.000000,-4.486491",
+"-1.145163,0.000000,-4.550939",
+"-1.213798,0.000000,-4.965816",
+"-1.160097,0.000000,-5.281436",
+"-1.157470,0.000000,-5.437137",
+"-1.176420,0.000000,-5.496387",
+"-1.219081,0.000000,-5.544801",
+"-1.222022,0.000000,-5.867131",
+"-1.197041,0.000000,-6.095666",
+"-1.212788,0.000000,-6.182446",
+"-1.197348,0.000000,-6.277071",
+"-1.205714,0.000000,-6.366744",
+"-1.182172,0.000000,-6.446217",
+"-1.229207,0.000000,-6.654593",
+"-1.292102,0.000000,-7.309339",
+"-1.249810,0.000000,-7.416559",
+"-1.253101,0.000000,-7.571384",
+"-1.229318,0.000000,-7.643998",
+"-1.230404,0.000000,-7.724447",
+"-1.292102,0.000000,-7.910229",
+"-1.292102,0.000000,-8.060061",
+"-1.289737,0.000000,-8.279900",
+"-1.305940,0.000000,-8.389021",
+"-1.281424,0.000000,-8.536418",
+"-1.281073,0.000000,-8.644720",
+"-1.305997,0.000000,-8.738051",
+"-1.302886,0.000000,-8.846630",
+"-1.269962,0.000000,-8.927813",
+"-1.303612,0.000000,-8.989327",
+"-1.305940,0.000000,-9.044627",
+"-1.296609,0.000000,-9.085978",
+"-1.305940,0.000000,-9.143233",
+"-0.885721,0.031142,-11.480952",
+"-1.044206,0.031142,-10.333737",
+"-0.504952,0.031142,-11.525787",
+"-0.294966,0.031142,-10.799282",
+"-0.907120,0.031142,-9.619235",
+"-0.478699,0.031142,-9.619235",
+"-0.880206,0.031142,-9.298851",
+"-0.478699,0.031142,-9.298851",
+"-1.321222,0.000000,-9.298851",
+"-1.334298,0.000000,-9.619235",
+"-1.284033,0.000000,-9.719844",
+"-1.274191,0.000000,-9.760203",
+"-1.265974,0.000000,-9.856019",
+"-1.272264,0.000000,-9.918247",
+"-1.281119,0.000000,-9.959308",
+"-1.301112,0.000000,-10.213007",
+"-1.291913,0.000000,-10.285469",
+"-1.298918,0.000000,-10.393349",
+"-1.285946,0.000000,-10.442584",
+"-1.284109,0.000000,-10.519143",
+"-1.295844,0.000000,-10.645988",
+"-1.324024,0.000000,-10.938330",
+"-1.307065,0.000000,-11.037432",
+"-1.270210,0.000000,-11.107378",
+"-1.280504,0.000000,-11.225766",
+"-1.319739,0.000000,-11.290488",
+"-1.249825,0.000000,-11.627669",
+"-1.219816,0.011001,-11.697840",
+"-1.099302,0.031142,-12.033273",
+"-0.914429,0.031142,-12.361553",
+"-0.861662,0.031142,-12.469915",
+"-0.836276,0.031142,-12.525468",
+"-0.730655,0.031142,-12.788734",
+"-0.716330,0.031142,-12.819342",
+"-0.696501,0.031142,-12.852378",
+"-0.680604,0.031142,-12.919670",
+"-0.559087,0.031142,-13.196249",
+"-0.498232,0.031142,-13.290452",
+"-0.332321,0.031142,-12.450246",
+"-0.033376,0.031142,-10.989223",
+"-0.031165,0.031142,-10.737923",
+"-0.006749,0.031142,-10.494394",
+"0.007234,0.031142,-10.354818",
+"0.017350,0.050207,-9.705999",
+"0.027994,0.050207,-9.504519",
+"0.048744,0.050207,-9.745686",
+"0.041963,0.050207,-9.661290",
+"0.062909,0.050207,-9.432812",
+"0.062909,0.050207,-9.249169",
+"-0.014933,0.050207,-9.129520",
+"-0.041474,0.050207,-8.946344",
+"-0.005595,0.050207,-8.719522",
+"0.043839,0.050207,-8.558253",
+"0.107752,0.050207,-8.322790",
+"0.090485,0.031142,-7.813179",
+"0.082160,0.031142,-7.687520",
+"0.049026,0.031142,-7.605735",
+"0.019888,0.031142,-7.459443",
+"0.054405,0.031142,-7.357378",
+"0.090485,0.031142,-7.309339",
+"0.076697,0.031142,-7.090951",
+"0.051360,0.031142,-6.884630",
+"0.051360,0.031142,-6.788589",
+"0.037621,0.031142,-6.725714",
+"0.051360,0.031142,-6.661287",
+"0.070932,0.031142,-6.018322",
+"0.024087,0.031142,-5.930967",
+"0.020100,0.031142,-5.871437",
+"0.036063,0.031142,-5.805789",
+"0.070932,0.031142,-5.704258",
+"0.059177,0.031142,-5.382303",
+"0.070932,0.031142,-5.236157",
+"0.073008,-0.031142,-3.749348",
+"-0.292624,-0.021710,-3.895892",
+"0.090485,-0.031142,-3.865273",
+"0.090485,-0.031142,-4.162933",
+"0.082428,-0.031142,-3.905438",
+"0.090485,-0.031142,-4.096630",
+"0.068515,-0.031142,-3.995907",
+"0.067327,-0.031142,-4.044083",
+"0.080524,-0.031142,-4.544520",
+"-0.301175,-0.021343,-4.245254",
+"0.070932,-0.031142,-4.723197",
+"-0.312974,-0.021207,-4.280988",
+"-0.427343,-0.020886,-4.386175",
+"-0.025536,-0.031142,-4.766785",
+"0.027391,-0.031142,-4.857055",
+"-0.698774,-0.011440,-4.077165",
+"-0.591938,-0.014142,-4.217099",
+"-0.733517,-0.015693,-4.545612",
+"-0.364415,-0.031142,-4.747726",
+"-0.302355,-0.031142,-4.703326",
+"-0.233473,-0.031142,-4.703326",
+"-0.171413,-0.031142,-4.747726",
+"-0.128466,-0.031142,-4.827732",
+"-0.113138,-0.031142,-4.927496",
+"0.030780,-0.031142,-5.007001",
+"-0.128466,-0.031142,-5.027262",
+"-0.130674,-0.031142,-5.031376",
+"0.014283,-0.031142,-5.130307",
+"-0.171413,-0.031142,-5.107267",
+"-0.478699,-0.031142,-5.871437",
+"-0.233473,-0.031142,-5.151667",
+"-0.302355,-0.031142,-5.151667",
+"-0.364415,-0.031142,-5.107267",
+"-0.478699,-0.031142,-5.078241",
+"-0.407362,-0.031142,-5.027261",
+"-0.422690,-0.031142,-4.927496",
+"-0.407362,-0.031142,-4.827731",
+"-0.739990,-0.016367,-4.596475",
+"0.037621,-0.031142,-6.725714",
+"0.051360,-0.031142,-6.661287",
+"0.070932,-0.031142,-6.018322",
+"0.024087,-0.031142,-5.930967",
+"0.020100,-0.031142,-5.871437",
+"0.036063,-0.031142,-5.805789",
+"0.070932,-0.031142,-5.704258",
+"0.059177,-0.031142,-5.382303",
+"0.070932,-0.031142,-5.236157",
+"0.073008,0.031142,-3.749348",
+"0.090485,0.031142,-3.865273",
+"-0.292624,0.021710,-3.895892",
+"0.082428,0.031142,-3.905438",
+"0.090485,0.031142,-4.162933",
+"0.068515,0.031142,-3.995907",
+"0.090485,0.031142,-4.096630",
+"0.067327,0.031142,-4.044083",
+"-0.270256,0.000000,-0.986354",
+"-0.217980,0.000000,-1.122188",
+"-0.266562,0.036804,-0.983977",
+"-0.214923,0.035256,-1.121821",
+"-0.159035,0.000000,-1.206271",
+"-0.157356,0.034332,-1.204195",
+"-0.134209,0.000000,-1.241685",
+"-0.128553,0.033869,-1.245411",
+"0.285555,0.000000,-3.169318",
+"0.285555,0.031142,-3.166790",
+"0.232515,0.000000,-3.073837",
+"0.232515,0.031142,-3.071515",
+"1.760813,0.000000,-3.011471",
+"1.759248,0.031142,-3.009715",
+"3.184764,0.031142,-2.917396",
+"3.184764,0.000000,-2.922327",
+"-0.128553,-0.033869,-1.245411",
+"-0.134209,0.000000,-1.241685",
+"-0.157356,-0.034332,-1.204195",
+"-0.159035,0.000000,-1.206271",
+"-0.214923,-0.035256,-1.121821",
+"-0.217980,0.000000,-1.122188",
+"-0.266562,-0.036804,-0.983977",
+"-0.270256,0.000000,-0.986354",
+"0.090485,0.000000,-7.309339",
+"0.090485,0.031142,-7.309339",
+"0.076697,0.000000,-7.081369",
+"0.076697,0.031142,-7.090951",
+"0.051360,0.000000,-6.882864",
+"0.051360,0.031142,-6.884630",
+"0.051360,0.031142,-6.788589",
+"0.051360,0.000000,-6.782248",
+"0.051360,-0.031142,-6.788589",
+"0.051360,0.000000,-6.882864",
+"0.051360,-0.031142,-6.884630",
+"0.076697,-0.031142,-7.090951",
+"0.076697,0.000000,-7.081369",
+"0.090485,-0.031142,-7.309339",
+"0.090485,0.000000,-7.309339",
+"3.184764,0.000000,-2.922327",
+"3.184764,-0.031142,-2.917396",
+"1.760813,0.000000,-3.011471",
+"1.759248,-0.031142,-3.009715",
+"0.232515,-0.031142,-3.071515",
+"0.232515,0.000000,-3.073837",
+"0.285555,-0.031142,-3.166790",
+"0.285555,0.000000,-3.169318",
+"-1.973623,0.117128,-3.089832",
+"-0.921620,0.055462,-3.139235",
+"-0.942695,0.009638,-3.173961",
+"3.042699,0.031142,-2.757765",
+"3.184764,0.031142,-2.917396",
+"0.965279,0.022191,-2.988009",
+"1.759248,0.031142,-3.009715",
+"0.232515,0.031142,-3.071515",
+"0.285555,0.031142,-3.166790",
+"-0.281563,0.022184,-3.444036",
+"0.057907,0.031142,-3.412982",
+"-0.283721,0.022091,-3.532191",
+"-1.145163,0.000000,-3.753470",
+"-1.145163,0.000000,-3.834539",
+"-1.145163,0.000000,-3.673596",
+"-1.145163,0.000000,-3.866092",
+"-1.139213,0.000000,-3.633500",
+"-1.135833,0.000000,-3.483153",
+"-1.122229,0.000000,-3.519050",
+"-1.189404,-0.000000,-1.349434",
+"-1.190560,-0.007297,-1.350346",
+"-1.140294,-0.000000,-1.310732",
+"-1.138663,-0.009139,-1.309415",
+"-1.062914,-0.000000,-1.249749",
+"-1.061252,-0.011885,-1.248359",
+"-0.977512,-0.000000,-1.121856",
+"-0.972906,-0.020110,-1.117548",
+"-0.931160,-0.024367,-1.039072",
+"-0.938152,-0.000000,-1.048977",
+"-0.938152,-0.000000,-1.048977",
+"-0.931160,0.024367,-1.039072",
+"-0.977512,-0.000000,-1.121856",
+"-0.972906,0.020110,-1.117548",
+"-1.061252,0.011885,-1.248359",
+"-1.062914,-0.000000,-1.249749",
+"-1.138663,0.009139,-1.309415",
+"-1.190560,0.007297,-1.350346",
+"-1.189404,-0.000000,-1.349434",
+"-2.128953,-0.010212,-2.432677",
+"-2.181278,-0.009529,-2.912204",
+"-1.926985,-0.117128,-2.453463",
+"-1.969204,-0.117128,-2.912204",
+"-1.775621,-0.141465,-2.462949",
+"-1.812179,-0.141465,-2.912204",
+"-1.083000,-0.153733,-2.912204",
+"-1.069873,-0.153733,-2.500565",
+"0.928829,-0.022291,-2.592386",
+"0.900842,-0.081345,-2.591871",
+"0.904746,-0.081345,-2.629034",
+"0.718883,-0.162691,-2.693217",
+"0.709122,-0.162691,-2.586856",
+"0.521069,-0.181164,-2.576719",
+"0.533190,-0.181164,-2.730598",
+"-0.184364,-0.168896,-2.820676",
+"-0.192528,-0.168896,-2.541849",
+"-0.831232,-0.157968,-2.912204",
+"-1.083456,-0.153733,-2.965087",
+"-1.815586,-0.141465,-3.067065",
+"-1.973623,-0.117128,-3.089832",
+"-0.921620,-0.055462,-3.139235",
+"-0.942695,-0.009638,-3.173961",
+"-0.978323,-0.004273,-3.332362",
+"-1.501727,-0.000000,-3.220610",
+"-2.870135,0.000000,-3.144409",
+"-2.835453,0.000000,-3.066615",
+"-2.181278,-0.009529,-2.912204",
+"-4.423970,0.000000,-2.855645",
+"-4.450231,0.000000,-2.711171",
+"-3.096414,0.000000,-2.431148",
+"-1.501727,-0.000000,-2.326572",
+"0.090485,0.000000,-3.861212",
+"0.090485,-0.031142,-3.865273",
+"0.082428,0.000000,-3.896273",
+"0.082428,-0.031142,-3.905438",
+"0.068515,0.000000,-3.990531",
+"0.068515,-0.031142,-3.995907",
+"0.067327,-0.031142,-4.044083",
+"0.067684,0.000000,-4.036055",
+"0.090485,0.000000,-4.096154",
+"0.090485,-0.031142,-4.096630",
+"0.090485,0.000000,-7.309339",
+"0.090485,-0.031142,-7.309339",
+"0.053371,0.000000,-7.361432",
+"0.054405,-0.031142,-7.357378",
+"0.019888,0.000000,-7.462666",
+"0.019888,-0.031142,-7.459443",
+"0.049026,-0.031142,-7.605735",
+"0.049026,0.000000,-7.608939",
+"0.082160,-0.031142,-7.687520",
+"0.082160,0.000000,-7.690792",
+"0.082160,0.000000,-7.690792",
+"0.082160,0.031142,-7.687520",
+"0.049026,0.000000,-7.608939",
+"0.049026,0.031142,-7.605735",
+"0.019888,0.031142,-7.459443",
+"0.054405,0.031142,-7.357378",
+"0.053371,0.000000,-7.361432",
+"0.090485,0.031142,-7.309339",
+"0.090485,0.000000,-7.309339",
+"0.070932,0.000000,-4.722299",
+"0.070932,-0.031142,-4.723197",
+"0.027391,0.000000,-4.861639",
+"0.027391,-0.031142,-4.857055",
+"0.030780,-0.031142,-5.007001",
+"0.030780,0.000000,-5.015825",
+"0.013309,0.000000,-5.129259",
+"0.014283,-0.031142,-5.130307",
+"0.070932,-0.031142,-5.236157",
+"0.070932,0.000000,-5.241640",
+"0.070932,0.000000,-5.241640",
+"0.070932,0.031142,-5.236157",
+"0.013309,0.000000,-5.129259",
+"0.014283,0.031142,-5.130307",
+"0.030780,0.031142,-5.007001",
+"0.027391,0.000000,-4.861639",
+"0.027391,0.031142,-4.857055",
+"0.070932,0.031142,-4.723197",
+"0.070932,0.000000,-4.722299",
+"0.090485,0.000000,-3.861212",
+"0.082428,0.000000,-3.896273",
+"0.090485,0.031142,-3.865273",
+"0.082428,0.031142,-3.905438",
+"0.068515,0.000000,-3.990531",
+"0.068515,0.031142,-3.995907",
+"0.067327,0.031142,-4.044083",
+"0.067684,0.000000,-4.036055",
+"0.090485,0.000000,-4.096154",
+"0.090485,0.031142,-4.096630",
+"0.070932,0.000000,-6.006474",
+"0.070932,0.031142,-6.018322",
+"0.024087,0.000000,-5.924499",
+"0.024087,0.031142,-5.930967",
+"0.020100,0.031142,-5.871437",
+"0.020100,0.000000,-5.871437",
+"0.036063,0.031142,-5.805789",
+"0.036063,0.000000,-5.790651",
+"0.070932,0.031142,-5.704258",
+"0.070932,0.000000,-5.701021",
+"0.070932,0.000000,-5.701021",
+"0.070932,-0.031142,-5.704258",
+"0.036063,0.000000,-5.790651",
+"0.036063,-0.031142,-5.805789",
+"0.020100,0.000000,-5.871437",
+"0.020100,-0.031142,-5.871437",
+"0.024087,0.000000,-5.924499",
+"0.024087,-0.031142,-5.930967",
+"0.070932,-0.031142,-6.018322",
+"0.070932,0.000000,-6.006474",
+"-0.978323,0.004273,-3.332362",
+"-1.501727,-0.000000,-3.220610",
+"-0.942695,0.009638,-3.173961",
+"-2.870135,0.000000,-3.144409",
+"-2.835453,0.000000,-3.066615",
+"-2.181278,0.009529,-2.912204",
+"-4.423970,0.000000,-2.855645",
+"-4.450231,0.000000,-2.711171",
+"-3.096414,0.000000,-2.431148",
+"-1.501727,-0.000000,-2.326572",
+"-2.128953,0.010212,-2.432677",
+"0.070932,-0.031142,-5.704258",
+"0.070932,0.000000,-5.701021",
+"0.059177,-0.031142,-5.382303",
+"0.059177,0.000000,-5.379615",
+"0.070932,-0.031142,-5.236157",
+"0.070932,0.000000,-5.241640",
+"0.070932,0.031142,-5.236157",
+"0.059177,0.031142,-5.382303",
+"0.070932,0.031142,-5.704258",
+"0.090485,0.031142,-4.162933",
+"0.090485,0.000000,-4.165751",
+"0.090485,0.031142,-4.358974",
+"0.090485,0.000000,-4.354898",
+"0.080524,0.031142,-4.544520",
+"0.080359,0.000000,-4.545165",
+"0.080524,-0.031142,-4.544520",
+"0.090485,-0.031142,-4.358974",
+"0.090485,-0.031142,-4.162933",
+"0.057907,0.031142,-3.412982",
+"0.057907,0.000000,-3.416383",
+"0.057907,0.031142,-3.649188",
+"0.057907,0.000000,-3.651116",
+"0.073008,0.031142,-3.749348",
+"0.073086,0.000000,-3.749008",
+"0.073008,-0.031142,-3.749348",
+"0.057907,-0.031142,-3.649188",
+"0.057907,-0.031142,-3.412982",
+"0.965279,0.022191,-2.988009",
+"0.963086,0.022192,-2.912204",
+"3.042699,0.031142,-2.757765",
+"0.928829,0.022291,-2.592386",
+"2.921345,0.031142,-2.464729",
+"2.848321,0.031142,-2.431148",
+"2.472293,0.029088,-2.396334",
+"2.868173,0.031142,-2.337097",
+"0.901241,0.022370,-2.334817",
+"0.228557,0.031142,-2.233399",
+"-0.244490,0.022501,-2.054975",
+"0.230636,0.031142,-2.053689",
+"0.215602,0.031142,-1.868954",
+"-0.251461,0.022613,-1.813332",
+"0.202775,0.031142,-1.813023",
+"0.194869,0.031142,-1.778552",
+"0.215602,0.031142,-1.689724",
+"-0.269574,0.025895,-1.513762",
+"0.126106,0.031682,-1.463593",
+"0.215602,0.031142,-1.531015",
+"0.928829,0.022291,-2.592386",
+"0.904746,0.081345,-2.629034",
+"0.900842,0.081345,-2.591871",
+"0.718883,0.162691,-2.693217",
+"0.709122,0.162691,-2.586856",
+"0.521069,0.181164,-2.576719",
+"0.533190,0.181164,-2.730598",
+"-0.184364,0.168896,-2.820676",
+"-0.192528,0.168896,-2.541849",
+"-0.831232,0.157968,-2.912204",
+"-1.069873,0.153733,-2.500565",
+"-0.942695,0.009638,-3.173961",
+"-2.181278,0.009529,-2.912204",
+"-0.921620,0.055462,-3.139235",
+"-1.969204,0.117128,-2.912204",
+"-1.973623,0.117128,-3.089832",
+"-1.815586,0.141465,-3.067065",
+"-1.812179,0.141465,-2.912204",
+"-1.083456,0.153733,-2.965087",
+"-1.083000,0.153733,-2.912204",
+"-1.775621,0.141465,-2.462949",
+"-1.926985,0.117128,-2.453463",
+"-2.128953,0.010212,-2.432677",
+"-0.849502,-0.118467,0.651591",
+"-0.927979,-0.000000,0.821142",
+"-0.889660,-0.000000,0.656723",
+"-0.849502,0.118467,0.651591",
+"-0.883745,0.116838,0.811179",
+"-0.825774,0.142217,0.677534",
+"-0.847550,0.141268,0.784171",
+"-0.772540,0.146998,0.748658",
+"-0.703720,0.191000,0.725081",
+"-0.709779,0.151785,0.800152",
+"-0.553436,0.238499,0.638779",
+"-0.691542,0.227704,0.575370",
+"-0.697556,0.152732,0.648720",
+"-0.804896,0.143127,0.575291",
+"-0.833131,0.119245,0.575291",
+"-0.870681,-0.000000,0.575291",
+"-0.833131,-0.119245,0.575291",
+"-0.804896,-0.143127,0.575291",
+"-0.825774,-0.142217,0.677534",
+"-0.703720,-0.191000,0.725081",
+"-0.697556,-0.152732,0.648720",
+"-0.558799,-0.209014,0.818776",
+"-0.556570,-0.163652,0.715759",
+"-0.419686,-0.172886,0.764370",
+"-0.402900,-0.202349,0.922740",
+"-0.391161,-0.153434,0.782498",
+"-0.373596,-0.153666,0.941959",
+"-0.354814,-0.076736,0.810210",
+"-0.336407,-0.076855,0.976097",
+"-0.352161,0.000000,0.825869",
+"-0.332916,0.000000,0.986631",
+"-0.336407,0.076855,0.976097",
+"-0.354814,0.076736,0.810210",
+"-0.373596,0.153666,0.941959",
+"-0.391161,0.153434,0.782498",
+"-0.402900,0.202349,0.922740",
+"-0.419686,0.172886,0.764370",
+"-0.446591,0.214908,0.680328",
+"-0.560824,0.163322,0.912313",
+"-0.558799,0.209014,0.818776",
+"-0.556570,0.163652,0.715759",
+"-0.422570,0.173166,1.011230",
+"-0.392802,0.153790,1.026838",
+"-0.355146,0.076909,1.050908",
+"-0.351295,0.000000,1.054588",
+"-0.355146,-0.076909,1.050908",
+"-0.392802,-0.153790,1.026838",
+"-0.422570,-0.173166,1.011230",
+"-0.560824,-0.163322,0.912313",
+"-0.709779,-0.151785,0.800152",
+"-0.772540,-0.146998,0.748658",
+"-0.847550,-0.141268,0.784171",
+"-0.883745,-0.116838,0.811179",
+"-0.395936,-0.153390,0.561143",
+"-0.359747,-0.076691,0.585969",
+"-0.312181,-0.076668,0.715759",
+"-0.357808,0.000000,0.597561",
+"-0.310075,0.000000,0.715759",
+"-0.312181,0.076668,0.715759",
+"-0.359747,0.076691,0.585969",
+"-0.395936,0.153390,0.561143",
+"-0.348210,0.153336,0.699290",
+"-0.451602,0.172930,0.541030",
+"-0.547842,0.164328,0.501347",
+"-0.809417,0.121735,0.396342",
+"-0.841937,-0.000000,0.380670",
+"-0.878462,-0.000000,0.483487",
+"-0.809417,-0.121735,0.396342",
+"-0.845532,-0.120183,0.507847",
+"-0.799524,-0.175018,0.528205",
+"-0.691542,-0.227704,0.575370",
+"-0.553436,-0.238499,0.638779",
+"-0.446591,-0.214908,0.680328",
+"-0.348210,-0.153336,0.699290",
+"-0.451602,-0.172930,0.541030",
+"-0.547842,-0.164328,0.501347",
+"-0.681576,-0.153970,0.453805",
+"-0.785782,-0.145218,0.407765",
+"-0.681576,0.153970,0.453805",
+"-0.799524,0.175018,0.528205",
+"-0.845532,0.120183,0.507847",
+"-0.785782,0.145218,0.407765",
+"-0.331499,0.000000,-13.660905",
+"-0.330247,0.031142,-13.656573",
+"-0.234500,0.000000,-13.202778",
+"-0.235590,0.031142,-13.206559",
+"-0.207933,0.000000,-13.006923",
+"-0.209926,0.031142,-13.013816",
+"-0.101458,0.031142,-12.669041",
+"-0.100507,0.000000,-12.666079",
+"-0.055984,0.000000,-12.471721",
+"-0.055224,0.031142,-12.469091",
+"-0.013494,0.000000,-12.233921",
+"-0.012219,0.031142,-12.229509",
+"0.016311,0.031142,-12.121605",
+"0.016311,0.000000,-12.121605",
+"0.016311,-0.031142,-12.121605",
+"-0.013494,0.000000,-12.233921",
+"-0.012219,-0.031142,-12.229509",
+"-0.055224,-0.031142,-12.469091",
+"-0.055984,0.000000,-12.471721",
+"-0.101458,-0.031142,-12.669041",
+"-0.207933,0.000000,-13.006923",
+"-0.209926,-0.031142,-13.013816",
+"-0.235590,-0.031142,-13.206559",
+"-0.234500,0.000000,-13.202778",
+"-0.330247,-0.031142,-13.656573",
+"-1.190560,0.007297,-1.350346",
+"-1.138663,0.009139,-1.309415",
+"-0.880391,0.015020,-1.322179",
+"-0.942971,0.013935,-1.296636",
+"-1.061252,0.011885,-1.248359",
+"-0.972906,0.020110,-1.117548",
+"-0.890805,0.015593,-1.299146",
+"-0.931160,0.024367,-1.039072",
+"-0.828336,0.029218,-1.032547",
+"-0.876396,0.016110,-1.299949",
+"0.107752,0.050207,-8.322790",
+"0.107752,0.000000,-8.322790",
+"0.043839,0.050207,-8.558253",
+"0.043839,0.000000,-8.558253",
+"-0.005595,0.050207,-8.719522",
+"-0.005595,0.000000,-8.719522",
+"-0.041474,0.000000,-8.946344",
+"-0.041474,0.050207,-8.946344",
+"-0.014933,0.000000,-9.129520",
+"-0.014933,0.050207,-9.129520",
+"0.062909,0.000000,-9.249169",
+"0.062909,0.050207,-9.249169",
+"0.062909,-0.050207,-9.249169",
+"-0.014933,-0.050207,-9.129520",
+"-0.041474,-0.050207,-8.946344",
+"-0.005595,-0.050207,-8.719522",
+"0.043839,-0.050207,-8.558253",
+"0.107752,-0.050207,-8.322790",
+"-0.592358,-0.193737,-3.554894",
+"-0.560720,-0.198859,-3.602172",
+"-0.517503,-0.205855,-3.490310",
+"-0.517503,-0.205855,-3.619478",
+"-0.474286,-0.212851,-3.602172",
+"-0.442649,-0.217972,-3.554894",
+"-0.431068,-0.219847,-3.490310",
+"-0.442649,-0.217972,-3.425726",
+"-0.474286,-0.212851,-3.378448",
+"-0.517503,-0.205855,-3.361143",
+"-0.560720,-0.198859,-3.378448",
+"-0.592358,-0.193737,-3.425726",
+"-0.603938,-0.191863,-3.490310",
+"-1.041448,-0.193737,-2.741554",
+"-0.835831,-0.198859,-2.788833",
+"-0.554953,-0.205855,-2.676970",
+"-0.554953,-0.205855,-2.806138",
+"-0.274074,-0.212851,-2.788833",
+"-0.068456,-0.217972,-2.741554",
+"0.006805,-0.219847,-2.676970",
+"-0.068456,-0.217972,-2.612387",
+"-0.274074,-0.212851,-2.565108",
+"-0.554953,-0.205855,-2.547803",
+"-0.835831,-0.198859,-2.565108",
+"-1.041448,-0.193737,-2.612387",
+"-1.116709,-0.191863,-2.676970",
+"-0.680479,-0.203626,-1.507394",
+"-0.633478,-0.208747,-1.554672",
+"-0.569275,-0.215743,-1.442810",
+"-0.569275,-0.215743,-1.571977",
+"-0.505071,-0.222739,-1.554672",
+"-0.458071,-0.227861,-1.507394",
+"-0.440867,-0.229735,-1.442810",
+"-0.458071,-0.227861,-1.378226",
+"-0.505071,-0.222739,-1.330947",
+"-0.569275,-0.215743,-1.313642",
+"-0.633478,-0.208747,-1.330947",
+"-0.680479,-0.203626,-1.378226",
+"-0.697682,-0.201751,-1.442810",
+"-0.362438,0.031142,-13.668348",
+"-0.443589,0.031142,-13.461515",
+"-0.343286,0.031142,-13.670047",
+"-0.469964,0.031142,-13.394726",
+"-0.330247,0.031142,-13.656573",
+"-0.235590,0.031142,-13.206559",
+"-0.209926,0.031142,-13.013816",
+"-0.101458,0.031142,-12.669041",
+"-0.055224,0.031142,-12.469091",
+"-0.012219,0.031142,-12.229509",
+"-0.001785,0.031142,-11.401309",
+"0.032562,0.031142,-11.969882",
+"0.016311,0.031142,-12.121605",
+"-0.880391,0.015020,-1.322179",
+"-0.840164,0.119991,-1.310748",
+"-0.841838,0.119861,-1.322179",
+"-0.810312,0.143998,-1.306828",
+"-0.812271,0.143846,-1.322179",
+"-0.672889,0.154642,-1.322179",
+"-0.671629,0.154740,-1.296328",
+"-0.500603,0.167987,-1.322179",
+"-0.502786,0.167818,-1.277389",
+"-0.361221,0.178783,-1.322179",
+"-0.368575,0.178213,-1.264553",
+"-0.324170,0.159958,-1.322179",
+"-0.333334,0.159248,-1.259608",
+"-0.284738,0.079979,-1.322179",
+"-0.295230,0.079605,-1.256206",
+"-0.291960,0.029639,-1.257043",
+"-0.281157,0.027994,-1.322179",
+"-0.269574,0.025895,-1.513762",
+"-0.273821,0.080525,-1.518504",
+"-0.312762,0.161172,-1.540475",
+"-0.350737,0.179893,-1.551152",
+"-0.496209,0.168448,-1.570964",
+"-0.677386,0.154155,-1.585096",
+"-0.823243,0.142670,-1.564757",
+"-0.854789,0.118481,-1.570285",
+"-0.895067,0.012907,-1.552992",
+"-0.568368,-0.207420,-1.304363",
+"-0.499552,-0.214919,-1.322912",
+"-0.562623,-0.154695,-1.304363",
+"-0.493807,-0.162194,-1.322912",
+"-0.449175,-0.220408,-1.373586",
+"-0.443430,-0.167683,-1.373586",
+"-0.430736,-0.222417,-1.442810",
+"-0.424990,-0.169693,-1.442810",
+"-0.449175,-0.220408,-1.512033",
+"-0.443430,-0.167683,-1.512033",
+"-0.499552,-0.214919,-1.562708",
+"-0.493807,-0.162194,-1.562708",
+"-0.568368,-0.207420,-1.581257",
+"-0.562623,-0.154695,-1.581257",
+"-0.637184,-0.199922,-1.562708",
+"-0.631439,-0.147197,-1.562708",
+"-0.687561,-0.194432,-1.512033",
+"-0.681815,-0.141707,-1.512033",
+"-0.697682,-0.201751,-1.442810",
+"-0.680479,-0.203626,-1.507394",
+"-0.633478,-0.208747,-1.554672",
+"-0.569275,-0.215743,-1.571977",
+"-0.505071,-0.222739,-1.554672",
+"-0.458071,-0.227861,-1.507394",
+"-0.440867,-0.229735,-1.442810",
+"-0.458071,-0.227861,-1.378226",
+"-0.505071,-0.222739,-1.330947",
+"-0.569275,-0.215743,-1.313642",
+"-0.637184,-0.199922,-1.322912",
+"-0.633478,-0.208747,-1.330947",
+"-0.687561,-0.194432,-1.373586",
+"-0.680479,-0.203626,-1.378226",
+"-0.706000,-0.192423,-1.442810",
+"-0.700255,-0.139698,-1.442810",
+"-0.681815,-0.141707,-1.373586",
+"-0.631439,-0.147197,-1.322912",
+"-0.516893,-0.197531,-3.351863",
+"-0.470571,-0.205030,-3.370412",
+"-0.513025,-0.144807,-3.351863",
+"-0.466703,-0.152305,-3.370412",
+"-0.436661,-0.210519,-3.421087",
+"-0.432793,-0.157795,-3.421087",
+"-0.424249,-0.212529,-3.490310",
+"-0.420381,-0.159804,-3.490310",
+"-0.436661,-0.210519,-3.559534",
+"-0.432793,-0.157795,-3.559534",
+"-0.470571,-0.205030,-3.610209",
+"-0.466703,-0.152305,-3.610209",
+"-0.516893,-0.197531,-3.628757",
+"-0.513025,-0.144807,-3.628757",
+"-0.563215,-0.190033,-3.610209",
+"-0.559347,-0.137308,-3.610209",
+"-0.597125,-0.184543,-3.559534",
+"-0.593257,-0.131819,-3.559534",
+"-0.603938,-0.191863,-3.490310",
+"-0.592358,-0.193737,-3.554894",
+"-0.560720,-0.198859,-3.602172",
+"-0.517503,-0.205855,-3.619478",
+"-0.474286,-0.212851,-3.602172",
+"-0.442649,-0.217972,-3.554894",
+"-0.431068,-0.219847,-3.490310",
+"-0.442649,-0.217972,-3.425726",
+"-0.474286,-0.212851,-3.378448",
+"-0.517503,-0.205855,-3.361143",
+"-0.563215,-0.190033,-3.370412",
+"-0.560720,-0.198859,-3.378448",
+"-0.597125,-0.184543,-3.421087",
+"-0.592358,-0.193737,-3.425726",
+"-0.609537,-0.182534,-3.490310",
+"-0.605669,-0.129809,-3.490310",
+"-0.593257,-0.131819,-3.421087",
+"-0.559347,-0.137308,-3.370412",
+"-0.550984,-0.197531,-2.538524",
+"-0.249927,-0.205030,-2.557072",
+"-0.525850,-0.144807,-2.538524",
+"-0.224793,-0.152305,-2.557072",
+"-0.029539,-0.210519,-2.607747",
+"-0.004405,-0.157795,-2.607747",
+"0.051129,-0.212529,-2.676970",
+"0.076264,-0.159804,-2.676970",
+"-0.029539,-0.210519,-2.746194",
+"-0.004405,-0.157795,-2.746194",
+"-0.249927,-0.205030,-2.796869",
+"-0.224793,-0.152305,-2.796869",
+"-0.550984,-0.197531,-2.815417",
+"-0.525850,-0.144807,-2.815417",
+"-0.852041,-0.190033,-2.796869",
+"-0.826907,-0.137308,-2.796869",
+"-1.072430,-0.184543,-2.746194",
+"-1.047296,-0.131819,-2.746194",
+"-1.116709,-0.191863,-2.676970",
+"-1.041448,-0.193737,-2.741554",
+"-0.835831,-0.198859,-2.788833",
+"-0.554953,-0.205855,-2.806138",
+"-0.274074,-0.212851,-2.788833",
+"-0.068456,-0.217972,-2.741554",
+"0.006805,-0.219847,-2.676970",
+"-0.068456,-0.217972,-2.612387",
+"-0.274074,-0.212851,-2.565108",
+"-0.554953,-0.205855,-2.547803",
+"-0.852041,-0.190033,-2.557072",
+"-0.835831,-0.198859,-2.565108",
+"-1.072430,-0.184543,-2.607747",
+"-1.041448,-0.193737,-2.612387",
+"-1.153098,-0.182534,-2.676970",
+"-1.127964,-0.129809,-2.676970",
+"-1.047296,-0.131819,-2.607747",
+"-0.826907,-0.137308,-2.557072",
+"0.016311,0.031142,-12.121605",
+"0.032562,0.031142,-11.969882",
+"0.016311,0.000000,-12.121605",
+"0.032562,0.000000,-11.969882",
+"-0.001785,0.031142,-11.401309",
+"-0.001785,0.000000,-11.401309",
+"-0.033376,0.031142,-10.989223",
+"-0.033376,0.000000,-10.989223",
+"-0.031699,0.000000,-10.743258",
+"-0.031165,0.031142,-10.737923",
+"-0.006749,0.031142,-10.494394",
+"-0.007449,0.000000,-10.501378",
+"0.007234,0.031142,-10.354818",
+"0.008484,0.000000,-10.342346",
+"0.017433,0.000000,-9.704030",
+"0.017350,0.050207,-9.705999",
+"0.027994,0.050207,-9.504519",
+"0.028220,0.000000,-9.500480",
+"0.048744,0.050207,-9.745686",
+"0.048744,0.000000,-9.744763",
+"0.044783,0.000000,-9.656913",
+"0.041963,0.050207,-9.661290",
+"0.062909,0.050207,-9.432812",
+"0.062909,0.000000,-9.426442",
+"0.062909,0.050207,-9.249169",
+"0.062909,0.000000,-9.249169",
+"0.016311,-0.031142,-12.121605",
+"0.032562,-0.031142,-11.969882",
+"-0.001785,-0.031142,-11.401309",
+"-0.033376,-0.031142,-10.989223",
+"-0.033376,0.000000,-10.989223",
+"-0.031699,0.000000,-10.743258",
+"-0.031165,-0.031142,-10.737923",
+"-0.006749,-0.031142,-10.494394",
+"0.007234,-0.031142,-10.354818",
+"0.008484,0.000000,-10.342346",
+"0.017433,0.000000,-9.704030",
+"0.017350,-0.050207,-9.705999",
+"0.027994,-0.050207,-9.504519",
+"0.048744,-0.050207,-9.745686",
+"0.048744,0.000000,-9.744763",
+"0.044783,0.000000,-9.656913",
+"0.041963,-0.050207,-9.661290",
+"0.062909,-0.050207,-9.432812",
+"0.062909,0.000000,-9.426442",
+"0.062909,-0.050207,-9.249169",
+"0.126106,0.031682,-1.463593",
+"0.121279,0.000000,-1.459801",
+"0.215602,0.031142,-1.531015",
+"0.215602,0.000000,-1.530493",
+"0.215602,0.031142,-1.689724",
+"0.215602,0.000000,-1.690527",
+"0.194869,0.031142,-1.778552",
+"0.194869,0.000000,-1.782601",
+"0.203370,0.000000,-1.819119",
+"0.202775,0.031142,-1.813023",
+"0.215602,0.031142,-1.868954",
+"0.215602,0.000000,-1.871670",
+"0.230636,0.000000,-2.059779",
+"0.230636,0.031142,-2.053689",
+"0.228557,0.031142,-2.233399",
+"0.228557,0.000000,-2.234667",
+"0.228557,-0.031142,-2.233399",
+"0.230636,-0.031142,-2.053689",
+"0.215602,-0.031142,-1.868954",
+"0.215602,0.000000,-1.871670",
+"0.203370,0.000000,-1.819119",
+"0.202775,-0.031142,-1.813023",
+"0.194869,-0.031142,-1.778552",
+"0.215602,0.000000,-1.690527",
+"0.215602,-0.031142,-1.689724",
+"0.215602,-0.031142,-1.531015",
+"0.126106,-0.031682,-1.463593",
+"-0.330247,0.031142,-13.656573",
+"-0.331499,0.000000,-13.660905",
+"-0.343286,0.031142,-13.670047",
+"-0.343286,0.000000,-13.670047",
+"-0.362438,0.031142,-13.668348",
+"-0.366042,0.000000,-13.662343",
+"-0.444606,0.000000,-13.459821",
+"-0.443589,0.031142,-13.461515",
+"-0.469964,0.031142,-13.394726",
+"-0.472195,0.000000,-13.391008",
+"-0.499726,0.000000,-13.287963",
+"-0.498232,0.031142,-13.290452",
+"-0.559087,0.031142,-13.196249",
+"-0.559087,0.000000,-13.196249",
+"-0.680604,0.031142,-12.919670",
+"-0.679307,0.000000,-12.921830",
+"-0.692979,0.000000,-12.858247",
+"-0.696501,0.031142,-12.852378",
+"-0.713762,0.000000,-12.823620",
+"-0.716330,0.031142,-12.819342",
+"-0.729570,0.000000,-12.790544",
+"-0.730655,0.031142,-12.788734",
+"-0.832548,0.000000,-12.531681",
+"-0.836276,0.031142,-12.525468",
+"-0.861662,0.000000,-12.469915",
+"-0.861662,0.031142,-12.469915",
+"-0.915388,0.000000,-12.359956",
+"-0.914429,0.031142,-12.361553",
+"-1.099302,0.031142,-12.033273",
+"-1.097524,0.000000,-12.036235",
+"-1.223656,0.000000,-11.698790",
+"-1.219816,0.011001,-11.697840",
+"-1.219816,-0.011001,-11.697840",
+"-1.223656,0.000000,-11.698790",
+"-1.099302,-0.031142,-12.033273",
+"-1.097524,0.000000,-12.036235",
+"-0.914429,-0.031142,-12.361553",
+"-0.861662,-0.031142,-12.469915",
+"-0.836276,-0.031142,-12.525468",
+"-0.832548,0.000000,-12.531681",
+"-0.730655,-0.031142,-12.788734",
+"-0.729570,0.000000,-12.790544",
+"-0.716330,-0.031142,-12.819342",
+"-0.713762,0.000000,-12.823620",
+"-0.696501,-0.031142,-12.852378",
+"-0.692979,0.000000,-12.858247",
+"-0.680604,-0.031142,-12.919670",
+"-0.679307,0.000000,-12.921830",
+"-0.559087,-0.031142,-13.196249",
+"-0.499726,0.000000,-13.287963",
+"-0.498232,-0.031142,-13.290452",
+"-0.469964,-0.031142,-13.394726",
+"-0.472195,0.000000,-13.391008",
+"-0.444606,0.000000,-13.459821",
+"-0.443589,-0.031142,-13.461515",
+"-0.362438,-0.031142,-13.668348",
+"-0.366042,0.000000,-13.662343",
+"-0.343286,0.000000,-13.670047",
+"-0.343286,-0.031142,-13.670047",
+"-0.331499,0.000000,-13.660905",
+"-0.330247,-0.031142,-13.656573",
+"-0.130674,-0.031142,-5.031376",
+"-0.171413,0.000000,-5.107267",
+"-0.171413,-0.031142,-5.107267",
+"-0.233473,0.000000,-5.151667",
+"-0.233473,-0.031142,-5.151667",
+"-0.302355,0.000000,-5.151667",
+"-0.302355,-0.031142,-5.151667",
+"-0.364415,0.000000,-5.107267",
+"-0.364415,-0.031142,-5.107267",
+"-0.407362,0.000000,-5.027261",
+"-0.407362,-0.031142,-5.027261",
+"-0.422690,0.000000,-4.927496",
+"-0.422690,-0.031142,-4.927496",
+"-0.407362,0.000000,-4.827731",
+"-0.407362,-0.031142,-4.827731",
+"-0.364415,0.000000,-4.747726",
+"-0.364415,-0.031142,-4.747726",
+"-0.302355,0.000000,-4.703326",
+"-0.302355,-0.031142,-4.703326",
+"-0.233473,0.000000,-4.703326",
+"-0.233473,-0.031142,-4.703326",
+"-0.171413,0.000000,-4.747726",
+"-0.171413,-0.031142,-4.747726",
+"-0.128466,0.000000,-4.827732",
+"-0.128466,-0.031142,-4.827732",
+"-0.113138,0.000000,-4.927496",
+"-0.113138,-0.031142,-4.927496",
+"-0.128466,0.000000,-5.027262",
+"-0.128466,-0.031142,-5.027262",
+"-0.130674,0.031142,-5.031376",
+"-0.171413,0.031142,-5.107267",
+"-0.233473,0.031142,-5.151667",
+"-0.302355,0.031142,-5.151667",
+"-0.364415,0.031142,-5.107267",
+"-0.407362,0.031142,-5.027261",
+"-0.422690,0.031142,-4.927496",
+"-0.407362,0.031142,-4.827731",
+"-0.364415,0.031142,-4.747726",
+"-0.302355,0.031142,-4.703326",
+"-0.233473,0.031142,-4.703326",
+"-0.171413,0.031142,-4.747726",
+"-0.128466,0.031142,-4.827732",
+"-0.113138,0.031142,-4.927496",
+"-0.128466,0.031142,-5.027262"
+};
 
-            return DDSdata;
-            //File.WriteAllBytes(DDSFile, DDSdata);
-        }
+    }
 
 
-        public byte[] GetSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
-        {
-            //Remove DDS header
-            List<byte> DDSList = DDSFile.ToList();
-            DDSList.RemoveRange(0, 0x80);
-            DDSFile = DDSList.ToArray();
-            return DrSwizzler.Swizzler.Xbox360Swizzle(DDSFile, Width, Height, Format);
-        }
-        public byte[] GetDeSwizzled(byte[] DDSFile, int Width, int Height, DrSwizzler.DDS.DXEnums.DXGIFormat Format)
-        {
-            //Remove Blue Dragon header
-            List<byte> DDSList = DDSFile.ToList();
-            DDSList.RemoveRange(0, 0x800);
-            DDSFile = DDSList.ToArray();
-            return DrSwizzler.Deswizzler.Xbox360Deswizzle(DDSFile, Width, Height, Format);
-        }
 
 
-        public int ToBigE(int Input)
-        {
-            byte[] bytes = BitConverter.GetBytes(Input);
-            Array.Reverse(bytes, 0, bytes.Length);
-            return BitConverter.ToInt32(bytes, 0);
-        }
+    class HDB_Data
+    {
+        List<HDB_Vert> Verticies = new List<HDB_Vert>();
 
-        //Auto converts everything to big endian
-        public void ListAddInt(List<byte> list, int Value)
-        {
-            byte[] ByteArr = BitConverter.GetBytes(ToBigE(Value));
-            for (int i = 0; i < ByteArr.Length; i++)
-            {
-                list.Add(ByteArr[i]);
-            }
-        }
 
 
     }
+
+    public class HDB_Vert
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public float X_2 { get; set; }
+        public float Y_2 { get; set; }
+        public float Z_2 { get; set; }
+        public int Null { get; set; }
+        public float Unknown_Float { get; set; }
+        public byte[] EmptyBytes = new byte[68];
+    }
+
+
 
 }

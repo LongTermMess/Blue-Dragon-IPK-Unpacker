@@ -35,6 +35,11 @@
             listBox1 = new ListBox();
             ToolTip1 = new ToolTip(components);
             checkBox1 = new CheckBox();
+            button3 = new Button();
+            textBox1 = new TextBox();
+            button4 = new Button();
+            button5 = new Button();
+            button6 = new Button();
             SuspendLayout();
             // 
             // button1
@@ -64,9 +69,9 @@
             listBox1.FormattingEnabled = true;
             listBox1.HorizontalScrollbar = true;
             listBox1.ItemHeight = 15;
-            listBox1.Location = new Point(12, 38);
+            listBox1.Location = new Point(12, 98);
             listBox1.Name = "listBox1";
-            listBox1.Size = new Size(576, 304);
+            listBox1.Size = new Size(576, 244);
             listBox1.TabIndex = 3;
             // 
             // checkBox1
@@ -81,11 +86,65 @@
             checkBox1.Text = "Auto Convert DDS Files";
             checkBox1.UseVisualStyleBackColor = true;
             // 
+            // button3
+            // 
+            button3.Location = new Point(391, 10);
+            button3.Name = "button3";
+            button3.Size = new Size(75, 23);
+            button3.TabIndex = 5;
+            button3.Text = "button3";
+            button3.UseVisualStyleBackColor = true;
+            button3.Click += button3_Click;
+            // 
+            // textBox1
+            // 
+            textBox1.Location = new Point(472, 9);
+            textBox1.Name = "textBox1";
+            textBox1.Size = new Size(100, 23);
+            textBox1.TabIndex = 6;
+            // 
+            // button4
+            // 
+            button4.Enabled = false;
+            button4.Location = new Point(472, 38);
+            button4.Name = "button4";
+            button4.Size = new Size(100, 23);
+            button4.TabIndex = 7;
+            button4.Text = "Random MDLs";
+            button4.UseVisualStyleBackColor = true;
+            button4.Click += button4_Click;
+            // 
+            // button5
+            // 
+            button5.Enabled = false;
+            button5.Location = new Point(472, 67);
+            button5.Name = "button5";
+            button5.Size = new Size(100, 23);
+            button5.TabIndex = 8;
+            button5.Text = "Dump MDLs";
+            button5.UseVisualStyleBackColor = true;
+            button5.Click += button5_Click;
+            // 
+            // button6
+            // 
+            button6.Location = new Point(391, 67);
+            button6.Name = "button6";
+            button6.Size = new Size(75, 23);
+            button6.TabIndex = 9;
+            button6.Text = "button6";
+            button6.UseVisualStyleBackColor = true;
+            button6.Click += button6_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(600, 366);
+            Controls.Add(button6);
+            Controls.Add(button5);
+            Controls.Add(button4);
+            Controls.Add(textBox1);
+            Controls.Add(button3);
             Controls.Add(checkBox1);
             Controls.Add(listBox1);
             Controls.Add(button2);
@@ -104,5 +163,10 @@
         private ListBox listBox1;
         private ToolTip ToolTip1;
         private CheckBox checkBox1;
+        private Button button3;
+        private TextBox textBox1;
+        private Button button4;
+        private Button button5;
+        private Button button6;
     }
 }
